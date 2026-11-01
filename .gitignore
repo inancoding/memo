@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+src-tauri/target/
+
+# Build output
+dist/
+
+# Generated
+src-tauri/gen/
+auto-imports.d.ts
+components.d.ts
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+
+# Generated
+auto-imports.d.ts
+components.d.ts
+
+# Vibe images
+vibe_images/
+
+# Logs
+*.log
+npm-debug.log*
