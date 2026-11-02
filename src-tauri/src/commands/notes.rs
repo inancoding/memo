@@ -3,6 +3,7 @@ use tauri::State;
 use crate::db::{Database, NoteRow};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Note {
     pub id: String,
     pub title: String,
@@ -44,12 +45,14 @@ impl From<NoteRow> for Note {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateNoteRequest {
     pub color: Option<String>,
     pub content: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateNoteRequest {
     pub id: String,
     pub title: Option<String>,

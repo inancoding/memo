@@ -9,6 +9,7 @@ defineProps<{
 const emit = defineEmits<{
   'click-note': [note: Note]
   'pin-note': [note: Note]
+  'delete-note': [note: Note]
 }>()
 </script>
 
@@ -20,6 +21,7 @@ const emit = defineEmits<{
       :note="note"
       @click="emit('click-note', note)"
       @pin="emit('pin-note', note)"
+      @delete="emit('delete-note', note)"
     />
   </div>
 
@@ -30,11 +32,6 @@ const emit = defineEmits<{
   >
     <template #icon>
       <i class="i-lucide-sticky-note w-12 h-12 text-muted-fg opacity-40" />
-    </template>
-    <template #extra>
-      <n-button size="small" type="warning" @click="$emit('click-note', {} as Note)">
-        点击右下角按钮创建第一条便签
-      </n-button>
     </template>
   </n-empty>
 </template>

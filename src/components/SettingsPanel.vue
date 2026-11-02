@@ -24,9 +24,9 @@ const themeMode = computed({
     :show="true"
     preset="card"
     title="设置"
-    size="huge"
+    size="small"
     :bordered="false"
-    style="width: 560px"
+    style="max-width: 300px"
     @close="emit('close')"
     @mask-click="emit('close')"
   >
@@ -48,10 +48,10 @@ const themeMode = computed({
           </div>
           <div class="flex items-center justify-between">
             <span class="text-sm">主题模式</span>
-            <n-radio-group v-model:value="themeMode" name="themeMode">
+            <n-radio-group v-model:value="themeMode" name="themeMode" size="small">
               <n-radio-button value="light" label="亮色" />
               <n-radio-button value="dark" label="暗色" />
-              <n-radio-button value="system" label="跟随系统" />
+              <n-radio-button value="system" label="系统" />
             </n-radio-group>
           </div>
         </div>

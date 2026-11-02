@@ -2,7 +2,7 @@ import { defineConfig, presetUno, presetAttributify, presetIcons } from 'unocss'
 
 export default defineConfig({
   presets: [
-    presetUno(),
+    presetUno({ dark: 'class' }),
     presetAttributify(),
     presetIcons({
       scale: 1.2,
@@ -34,20 +34,30 @@ export default defineConfig({
         DEFAULT: '#EA580C',
         hover: '#C2410C',
       },
-      background: '#FFFBEB',
+      background: {
+        DEFAULT: '#FFFBEB',
+        dark: '#1C1917',
+      },
       surface: {
         DEFAULT: '#FFFFFF',
         hover: '#FEF3C7',
+        dark: '#292524',
+        'hover-dark': '#44403C',
       },
-      foreground: '#1C1917',
+      foreground: {
+        DEFAULT: '#1C1917',
+        dark: '#E7E0CC',
+      },
       muted: {
         DEFAULT: '#F5F0E1',
         bg: '#FEF3C7',
         fg: '#78716C',
+        'fg-dark': '#A8A29E',
       },
       border: {
         DEFAULT: '#E7E0CC',
         focus: '#D97706',
+        dark: '#44403C',
       },
       destructive: {
         DEFAULT: '#DC2626',

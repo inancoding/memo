@@ -12,6 +12,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   click: [note: Note]
   pin: [note: Note]
+  delete: [note: Note]
 }>()
 
 const { isDark } = useTheme()
@@ -21,7 +22,7 @@ const colorStyle = computed(() => {
   const c = NOTE_COLORS[props.note.color]
   return {
     background: isDark.value ? c.dark : c.light,
-    color: c.text,
+    color: isDark.value ? c.darkText : c.text,
   }
 })
 
@@ -41,7 +42,7 @@ const timeAgo = computed(() => formatTime(props.note.updatedAt))
 
 <template>
   <div
-    class="rounded-xl p-4 cursor-pointer flex flex-col gap-2 border border-black/5 dark:border-none transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] group"
+    class="rounded-xl p-4 cursor-pointer flex flex-col gap-2 border border-black/5 dark:border-white/10 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] group"
     :style="colorStyle"
     @click="emit('click', note)"
   >
@@ -63,16 +64,31 @@ const timeAgo = computed(() => formatTime(props.note.updatedAt))
       {{ preview }}
     </div>
 
-    <div class="flex items-center justify-between pt-2 border-t border-black/6 text-xs opacity-40">
+    <div class="flex items-center justify-between pt-2 border-t border-black/6 dark:border-white/10 text-xs opacity-40">
       <span>{{ timeAgo }}</span>
-      <n-button
-        text
-        size="tiny"
-        class="opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity"
-        @click.stop="emit('pin', note)"
-      >
-        <i :class="note.isPinned ? 'i-lucide-pin' : 'i-lucide-pin-off'" class="w-3.5 h-3.5" />
-      </n-button>
+      <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <n-button
+          text
+          size="tiny"
+          title="置顶"
+          @click.stop="emit('pin', note)"
+        >
+          <i :class="note.isPinned ? 'i-lucide-pin text-primary!' : 'i-lucide-pin-off'" class="w-3.5 h-3.5" />
+        </n-button>
+        <n-popconfirm @positive-click="emit('delete', note)">
+          <template #trigger>
+            <n-button
+              text
+              size="tiny"
+              title="删除"
+              @click.stop
+            >
+              <i class="i-lucide-trash-2 w-3.5 h-3.5" />
+            </n-button>
+          </template>
+          确定删除这条便签吗？
+        </n-popconfirm>
+      </div>
     </div>
   </div>
 </template>

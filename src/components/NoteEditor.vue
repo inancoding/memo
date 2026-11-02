@@ -25,7 +25,7 @@ const colorStyle = computed(() => {
   const c = NOTE_COLORS[props.note.color]
   return {
     background: isDark.value ? c.dark : c.light,
-    color: c.text,
+    color: isDark.value ? c.darkText : c.text,
   }
 })
 
@@ -55,7 +55,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
     :style="[colorStyle, { width: note.width + 'px', height: note.height + 'px', minWidth: '200px', minHeight: '150px' }]"
   >
     <!-- Title Bar -->
-    <div class="h-8 flex items-center px-2 gap-1.5 cursor-grab flex-shrink-0 select-none" data-tauri-drag-region>
+    <div class="h-8 flex items-center px-2 gap-1.5 cursor-default flex-shrink-0 select-none">
       <div class="flex gap-1.5">
         <button
           v-for="[key, val] in colorEntries"

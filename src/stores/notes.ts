@@ -1,84 +1,88 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import type { Note, NoteColor } from '@/types'
 
 export const useNoteStore = defineStore('notes', () => {
   const notes = ref<Note[]>([])
-  const searchQuery = ref('')
 
-  const filteredNotes = computed(() => {
-    const query = searchQuery.value.toLowerCase().trim()
-    const activeNotes = notes.value.filter(n => n.deletedAt === null)
-    if (!query) return activeNotes
-    return activeNotes.filter(
-      n => n.title.toLowerCase().includes(query) || n.content.toLowerCase().includes(query)
-    )
-  })
-
-  const trashedNotes = computed(() =>
-    notes.value.filter(n => n.deletedAt !== null)
-  )
-
-  function createNote(color: NoteColor = 'yellow'): Note {
-    const note: Note = {
-      id: crypto.randomUUID(),
-      title: '',
-      content: '',
-      color,
-      fontSize: 14,
-      positionX: Math.round(100 + Math.random() * 200),
-      positionY: Math.round(100 + Math.random() * 200),
-      width: 300,
-      height: 300,
-      isPinned: false,
-      stickyEdge: null,
-      isHidden: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      deletedAt: null,
+  async function loadNotes() {
+    try {
+      const result = await invoke<Note[]>('get_notes')
+      notes.value = result
+    } catch (e) {
+      console.error('Failed to load notes:', e)
     }
-    notes.value.unshift(note)
-    return note
   }
 
-  function updateNote(id: string, updates: Partial<Note>) {
-    const note = notes.value.find(n => n.id === id)
-    if (note) {
-      Object.assign(note, updates, { updatedAt: new Date().toISOString() })
-      if (note.content) {
-        note.title = note.content.split('\n')[0].slice(0, 50)
+  async function createNote(color: NoteColor = 'yellow'): Promise<Note | null> {
+    try {
+      const note = await invoke<Note>('create_note', {
+        request: { color, content: '' },
+      })
+      notes.value.unshift(note)
+      return note
+    } catch (e) {
+      console.error('Failed to create note:', e)
+      return null
+    }
+  }
+
+  async function updateNote(id: string, updates: Partial<Note>) {
+    try {
+      const note = await invoke<Note>('update_note', {
+        request: { id, ...updates },
+      })
+      const index = notes.value.findIndex(n => n.id === id)
+      if (index !== -1) {
+        notes.value[index] = note
       }
+    } catch (e) {
+      console.error('Failed to update note:', e)
     }
   }
 
-  function deleteNote(id: string) {
-    const note = notes.value.find(n => n.id === id)
-    if (note) {
-      note.deletedAt = new Date().toISOString()
+  async function deleteNote(id: string) {
+    try {
+      await invoke('delete_note', { id })
+      const note = notes.value.find(n => n.id === id)
+      if (note) {
+        note.deletedAt = new Date().toISOString()
+      }
+    } catch (e) {
+      console.error('Failed to delete note:', e)
     }
   }
 
-  function restoreNote(id: string) {
-    const note = notes.value.find(n => n.id === id)
-    if (note) {
-      note.deletedAt = null
+  async function restoreNote(id: string) {
+    try {
+      await invoke('restore_note', { id })
+      const note = notes.value.find(n => n.id === id)
+      if (note) {
+        note.deletedAt = null
+      }
+    } catch (e) {
+      console.error('Failed to restore note:', e)
     }
   }
 
-  function permanentDelete(id: string) {
+  async function permanentDelete(id: string) {
     const index = notes.value.findIndex(n => n.id === id)
     if (index !== -1) notes.value.splice(index, 1)
   }
 
-  function emptyTrash() {
-    notes.value = notes.value.filter(n => n.deletedAt === null)
+  async function emptyTrash() {
+    try {
+      await invoke('empty_trash')
+      notes.value = notes.value.filter(n => n.deletedAt === null)
+    } catch (e) {
+      console.error('Failed to empty trash:', e)
+    }
   }
 
   return {
     notes,
-    searchQuery,
-    filteredNotes,
-    trashedNotes,
+    loadNotes,
     createNote,
     updateNote,
     deleteNote,
