@@ -528,6 +528,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   display: flex;
   align-items: center;
   gap: 2px;
+  margin-left: auto;
   opacity: 1;
   pointer-events: auto;
 }
