@@ -26,16 +26,30 @@ const colorStyle = computed(() => {
   }
 })
 
+// 富文本内容为 HTML，提取纯文本用于卡片预览
+function htmlToText(html: string): string {
+  if (!html) return ''
+  const el = document.createElement('div')
+  el.innerHTML = html
+  el.querySelectorAll('br').forEach(br => br.replaceWith(document.createTextNode('\n')))
+  el.querySelectorAll('div, p, li').forEach(node => node.appendChild(document.createTextNode('\n')))
+  return (el.textContent || '')
+    .replace(/\u200B/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{2,}/g, '\n')
+    .trim()
+}
+
+const contentLines = computed(() =>
+  htmlToText(props.note.content).split('\n').filter(line => line.trim() !== '')
+)
+
 const displayTitle = computed(() => {
   if (props.note.title) return props.note.title.slice(0, 30)
-  const firstLine = props.note.content.split('\n')[0]
-  return firstLine.slice(0, 30) || '新便签'
+  return (contentLines.value[0] || '新便签').slice(0, 30)
 })
 
-const preview = computed(() => {
-  const lines = props.note.content.split('\n')
-  return lines.slice(lines.length > 1 ? 1 : 0).join('\n').slice(0, 120)
-})
+const preview = computed(() => contentLines.value.slice(1).join('\n').slice(0, 120))
 
 const timeAgo = computed(() => formatTime(props.note.updatedAt))
 </script>
