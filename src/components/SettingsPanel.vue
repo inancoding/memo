@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { getVersion } from '@tauri-apps/api/app'
 import { useSettingsStore } from '@/stores/settings'
 import { useTheme } from '@/composables/useTheme'
 
@@ -9,6 +10,15 @@ const settings = useSettingsStore()
 const { setTheme } = useTheme()
 
 const activeTab = ref<'general' | 'edge' | 'about'>('general')
+const appVersion = ref('')
+
+onMounted(async () => {
+  try {
+    appVersion.value = await getVersion()
+  } catch (e) {
+    console.error('getVersion failed:', e)
+  }
+})
 
 const themeMode = computed({
   get: () => settings.settings.themeMode,
@@ -107,7 +117,7 @@ const themeMode = computed({
           </div>
           <div class="flex items-center justify-between">
             <span class="text-muted-fg text-sm">版本</span>
-            <span class="text-sm">v1.0.0</span>
+            <span class="text-sm">v{{ appVersion || '—' }}</span>
           </div>
           <div class="flex items-center justify-between">
             <span class="text-muted-fg text-sm">技术栈</span>
