@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { MdEditor } from 'md-editor-v3'
+import 'md-editor-v3/lib/style.css'
 import type { Note, NoteColor } from '@/types'
 import { NOTE_COLORS } from '@/types'
 import { useTheme } from '@/composables/useTheme'
@@ -19,31 +21,68 @@ const { isDark } = useTheme()
 const { scheduleAutoSave, formatTime } = useNote(() => props.note)
 
 const editContent = ref(props.note.content)
-const showColorPicker = ref(false)
 
-const colorStyle = computed(() => {
+const noteBg = computed(() => {
   const c = NOTE_COLORS[props.note.color]
-  return {
-    background: isDark.value ? c.dark : c.light,
-    color: isDark.value ? c.darkText : c.text,
-  }
+  return isDark.value ? c.dark : c.light
+})
+
+const noteTextColor = computed(() => {
+  const c = NOTE_COLORS[props.note.color]
+  return isDark.value ? c.darkText : c.text
 })
 
 const timeAgo = computed(() => formatTime(props.note.updatedAt))
+
+const toolbarConfig = [
+  'bold', 'italic', 'strike', 'underline', 'title', '-',
+  'unorderedList', 'orderedList', 'task', '-',
+  'fontSize', 'link', 'image', 'table', '-',
+  'revoke', 'next', '=', 'preview', 'catalog',
+]
 
 watch(() => props.note.content, (val) => {
   if (val !== editContent.value) editContent.value = val
 })
 
-function onInput() {
+function applyEditorStyle() {
+  const el = document.querySelector('.md-editor-custom') as HTMLElement
+  if (!el) return
+  const bg = noteBg.value
+  const textColor = noteTextColor.value
+  const selectors = [
+    '', ' .md-editor-input-wrapper', ' .md-editor-editor-wrapper',
+    ' .md-editor-content', ' .md-editor-scroll-wrapper',
+    ' .md-editor-toolbar', ' .md-editor-toolbar-wrapper',
+  ]
+  selectors.forEach(sel => {
+    const target = sel ? el.querySelector(sel) as HTMLElement : el
+    if (target) target.style.setProperty('background', bg, 'important')
+  })
+  const textarea = el.querySelector('textarea') as HTMLElement
+  if (textarea) {
+    textarea.style.setProperty('background', bg, 'important')
+    textarea.style.setProperty('color', textColor, 'important')
+  }
+}
+
+watch([noteBg, noteTextColor], () => {
+  nextTick(() => setTimeout(applyEditorStyle, 50))
+})
+
+onMounted(() => {
+  nextTick(() => setTimeout(applyEditorStyle, 200))
+})
+
+function onModelChange(val: string) {
+  editContent.value = val
   scheduleAutoSave((content) => {
     emit('update', { content })
-  }, editContent.value)
+  }, val)
 }
 
 function changeColor(color: NoteColor) {
   emit('update', { color })
-  showColorPicker.value = false
 }
 
 const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLORS[NoteColor]][]
@@ -52,18 +91,18 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 <template>
   <div
     class="rounded-lg shadow-lg flex flex-col overflow-hidden relative"
-    :style="[colorStyle, { width: note.width + 'px', height: note.height + 'px', minWidth: '200px', minHeight: '150px' }]"
+    :style="{ background: noteBg, color: noteTextColor, width: note.width + 'px', height: note.height + 'px', minWidth: '360px', minHeight: '300px' }"
   >
     <!-- Title Bar -->
-    <div class="h-8 flex items-center px-2 gap-1.5 cursor-default flex-shrink-0 select-none">
-      <div class="flex gap-1.5">
+    <div class="h-9 flex items-center px-2.5 gap-2 cursor-default flex-shrink-0 select-none" :style="{ background: noteBg }">
+      <div class="flex gap-2">
         <button
           v-for="[key, val] in colorEntries"
           :key="key"
-          class="w-2.5 h-2.5 rounded-full border-none cursor-pointer transition-transform hover:scale-120"
+          class="w-4 h-4 rounded-full border-none cursor-pointer transition-all hover:scale-115"
           :class="{ 'ring-2 ring-primary ring-offset-1': note.color === key }"
-          :style="{ background: isDark ? val.dark : val.light }"
-          @click="showColorPicker = !showColorPicker"
+          :style="{ background: isDark ? val.dark : val.light, boxShadow: `0 0 0 1px rgba(0,0,0,0.1)` }"
+          @click="changeColor(key)"
         />
       </div>
       <div class="flex-1" />
@@ -81,38 +120,48 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
       </n-button>
     </div>
 
-    <!-- Color Picker Popup -->
-    <div
-      v-if="showColorPicker"
-      class="absolute top-8 left-2 bg-surface border border-border rounded-lg p-2.5 shadow-lg z-10"
-    >
-      <div class="text-xs font-semibold text-muted-fg mb-2">选择便签颜色</div>
-      <div class="grid grid-cols-3 gap-1.5">
-        <button
-          v-for="[key, val] in colorEntries"
-          :key="key"
-          class="w-9 h-9 rounded-md border-2 cursor-pointer transition-all hover:scale-108"
-          :class="{ 'border-primary shadow-[0_0_0_2px_rgba(217,119,6,0.3)]': note.color === key }"
-          :style="{ background: isDark ? val.dark : val.light }"
-          @click="changeColor(key)"
-        />
-      </div>
-    </div>
-
-    <!-- Editor -->
-    <div class="flex-1 px-3 py-1 overflow-y-auto">
-      <textarea
-        v-model="editContent"
-        class="w-full h-full border-none bg-transparent resize-none outline-none text-sm leading-relaxed"
-        :style="{ color: colorStyle.color, fontSize: note.fontSize + 'px' }"
-        placeholder="在这里输入内容..."
-        @input="onInput"
+    <!-- Markdown Editor -->
+    <div class="flex-1 overflow-hidden" :style="{ background: noteBg }">
+      <MdEditor
+        :model-value="editContent"
+        :theme="isDark ? 'dark' : 'light'"
+        :toolbars="toolbarConfig"
+        :preview="false"
+        :show-code-row-number="false"
+        auto-focus
+        class="md-editor-custom"
+        @on-change="onModelChange"
       />
     </div>
 
     <!-- Status Bar -->
-    <div class="h-6 flex items-center justify-end px-3 text-xs opacity-40 flex-shrink-0">
+    <div class="h-6 flex items-center justify-end px-3 text-xs opacity-40 flex-shrink-0" :style="{ background: noteBg }">
       {{ timeAgo }}
     </div>
   </div>
 </template>
+
+<style>
+.md-editor-custom {
+  height: 100% !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.md-editor-custom .md-editor-toolbar {
+  border-bottom: 1px solid rgba(0,0,0,0.08) !important;
+}
+
+.dark .md-editor-custom .md-editor-toolbar {
+  border-bottom-color: rgba(255,255,255,0.08) !important;
+}
+
+.md-editor-custom .md-editor-toolbar-item {
+  border-radius: 4px !important;
+}
+
+.md-editor-custom .md-editor-input-wrapper textarea {
+  font-family: inherit !important;
+}
+</style>

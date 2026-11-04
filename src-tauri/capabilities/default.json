@@ -1,10 +1,16 @@
 {
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "description": "Capability for main and editor windows",
+  "windows": ["main", "editor"],
   "permissions": [
     "core:default",
     "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    "core:window:allow-show",
+    "core:window:allow-destroy",
+    "core:window:allow-start-dragging",
+    "core:event:allow-listen",
     "shell:allow-open"
   ]
 }

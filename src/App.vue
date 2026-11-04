@@ -3,10 +3,10 @@ import { ref, computed, onMounted } from 'vue'
 import { darkTheme } from 'naive-ui'
 import type { GlobalThemeOverrides } from 'naive-ui'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { invoke } from '@tauri-apps/api/core'
 import { useTheme } from './composables/useTheme'
 import { useNoteStore } from './stores/notes'
 import NoteList from './components/NoteList.vue'
-import NoteEditor from './components/NoteEditor.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import type { Note } from './types'
 
@@ -14,13 +14,7 @@ const { isDark, toggleTheme } = useTheme()
 const noteStore = useNoteStore()
 
 const showSettings = ref(false)
-const editingNoteId = ref<string | null>(null)
 const appWindow = getCurrentWindow()
-
-const editingNote = computed(() => {
-  if (!editingNoteId.value) return null
-  return noteStore.notes.find(n => n.id === editingNoteId.value) || null
-})
 
 const noteCount = computed(() => noteStore.notes.filter(n => n.deletedAt === null).length)
 
@@ -119,26 +113,10 @@ async function handleNewNote() {
 }
 
 function handleClickNote(note: Note) {
-  editingNoteId.value = note.id
-}
-
-function handleEditorClose() {
-  editingNoteId.value = null
-}
-
-function handleEditorUpdate(updates: Partial<Note>) {
-  if (editingNoteId.value) {
-    noteStore.updateNote(editingNoteId.value, updates)
-  }
-}
-
-function handleEditorPin() {
-  if (editingNoteId.value) {
-    const note = noteStore.notes.find(n => n.id === editingNoteId.value)
-    if (note) {
-      noteStore.updateNote(editingNoteId.value, { isPinned: !note.isPinned })
-    }
-  }
+  console.log('handleClickNote called with noteId:', note.id)
+  invoke('open_editor', { noteId: note.id })
+    .then(() => console.log('open_editor succeeded'))
+    .catch((e) => console.error('open_editor failed:', e))
 }
 
 function handlePinNote(note: Note) {
@@ -149,9 +127,14 @@ function handleDeleteNote(note: Note) {
   noteStore.deleteNote(note.id)
 }
 
-function handleClose() {
+async function handleClose() {
   console.log('handleClose called')
-  appWindow.hide()
+  try {
+    await appWindow.hide()
+    console.log('Window hidden successfully')
+  } catch (e) {
+    console.error('Failed to hide window:', e)
+  }
 }
 </script>
 
@@ -171,14 +154,14 @@ function handleClose() {
         </div>
 
         <!-- Action Buttons (outside drag region) -->
-        <div class="flex items-center gap-0.5 no-drag">
-          <n-button quaternary circle size="tiny" @click="toggleTheme" :title="isDark ? '亮色模式' : '暗色模式'">
+        <div class="flex items-center gap-0.5" style="-webkit-app-region: no-drag; pointer-events: auto;">
+          <n-button quaternary circle size="tiny" @click="toggleTheme" :title="isDark ? '亮色模式' : '暗色模式'" style="pointer-events: auto;">
             <i :class="isDark ? 'i-lucide-moon' : 'i-lucide-sun'" class="w-4 h-4" />
           </n-button>
-          <n-button quaternary circle size="tiny" @click="showSettings = true" title="设置">
+          <n-button quaternary circle size="tiny" @click="showSettings = true" title="设置" style="pointer-events: auto;">
             <i class="i-lucide-settings w-4 h-4" />
           </n-button>
-          <n-button quaternary circle size="tiny" class="close-btn" title="关闭" @click="handleClose">
+          <n-button quaternary circle size="tiny" class="close-btn" title="关闭" @click="handleClose" style="pointer-events: auto;">
             <i class="i-lucide-x w-4 h-4" />
           </n-button>
         </div>
@@ -215,17 +198,6 @@ function handleClose() {
         </template>
       </n-button>
 
-      <!-- Note Editor -->
-      <div v-if="editingNote" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" @click.self="handleEditorClose">
-        <NoteEditor
-          :note="editingNote"
-          :key="editingNote.id"
-          @close="handleEditorClose"
-          @update="handleEditorUpdate"
-          @pin="handleEditorPin"
-        />
-      </div>
-
       <!-- Settings Panel -->
       <SettingsPanel v-if="showSettings" @close="showSettings = false" />
     </div>
@@ -242,8 +214,12 @@ function handleClose() {
   -webkit-app-region: no-drag;
 }
 
+.close-btn {
+  background-color: rgba(220, 38, 38, 0.15) !important;
+}
+
 .close-btn:hover {
-  background-color: rgba(220, 38, 38, 0.1) !important;
+  background-color: rgba(220, 38, 38, 0.3) !important;
   color: #DC2626 !important;
 }
 

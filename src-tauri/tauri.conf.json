@@ -23,10 +23,29 @@
         "decorations": false,
         "transparent": false,
         "alwaysOnTop": false
+      },
+      {
+        "label": "editor",
+        "title": "Memo Editor",
+        "url": "editor.html",
+        "width": 500,
+        "height": 450,
+        "minWidth": 300,
+        "minHeight": 250,
+        "resizable": true,
+        "visible": false,
+        "decorations": false,
+        "transparent": false,
+        "alwaysOnTop": false,
+        "dragDropEnabled": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
     },
     "trayIcon": {
       "iconPath": "icons/icon.png",

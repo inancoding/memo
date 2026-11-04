@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tauri::{image::Image, Manager};
+use tauri::{image::Image, Manager, Emitter};
 use std::fs;
 
 mod commands;
@@ -55,6 +55,44 @@ fn load_window_state(app_handle: &tauri::AppHandle) -> Option<WindowState> {
     serde_json::from_str(&content).ok()
 }
 
+#[tauri::command]
+fn save_window_state_cmd(app_handle: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        save_window_state(&app_handle, &window);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn open_editor(app_handle: tauri::AppHandle, note_id: String) -> Result<(), String> {
+    println!("open_editor called with note_id: {}", note_id);
+
+    // 获取预定义的编辑器窗口
+    if let Some(editor_window) = app_handle.get_webview_window("editor") {
+        println!("Found editor window");
+        
+        // 通过事件发送 note ID
+        editor_window.emit("open-note", &note_id)
+            .map_err(|e| e.to_string())?;
+        
+        // 如果窗口已可见，只需聚焦；否则显示窗口
+        if editor_window.is_visible().unwrap_or(false) {
+            println!("Editor window already visible, focusing");
+            editor_window.set_focus().map_err(|e| e.to_string())?;
+        } else {
+            println!("Showing editor window");
+            editor_window.show().map_err(|e| e.to_string())?;
+            editor_window.set_focus().map_err(|e| e.to_string())?;
+        }
+        
+        println!("Editor window ready");
+        Ok(())
+    } else {
+        println!("Editor window not found");
+        Err("Editor window not found".to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -66,6 +104,8 @@ pub fn run() {
             commands::notes::delete_note,
             commands::notes::restore_note,
             commands::notes::empty_trash,
+            save_window_state_cmd,
+            open_editor,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
@@ -105,14 +145,5 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|app_handle, event| match event {
-        tauri::RunEvent::ExitRequested { api, .. } => {
-            api.prevent_exit();
-            if let Some(window) = app_handle.get_webview_window("main") {
-                save_window_state(app_handle, &window);
-                let _ = window.hide();
-            }
-        }
-        _ => {}
-    });
+    app.run(|_app_handle, _event| {});
 }
