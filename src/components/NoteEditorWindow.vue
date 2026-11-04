@@ -16,6 +16,7 @@ const note = ref<Note | null>(null)
 const isFocused = ref(false)
 const editorRef = ref<HTMLDivElement | null>(null)
 const noteId = ref<string | null>(null)
+const isPinned = ref(false)
 
 // 监听 open-note 事件
 let unlisten: (() => void) | null = null
@@ -392,6 +393,16 @@ async function handleClose() {
   await appWindow.hide()
 }
 
+async function togglePin() {
+  isPinned.value = !isPinned.value
+  try {
+    await appWindow.setAlwaysOnTop(isPinned.value)
+  } catch (e) {
+    console.error('setAlwaysOnTop failed:', e)
+    isPinned.value = !isPinned.value
+  }
+}
+
 const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLORS[NoteColor]][]
 </script>
 
@@ -422,6 +433,9 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
         </div>
         <div class="flex-1" />
         <div class="close-btn-container no-drag">
+          <n-button text size="tiny" :title="isPinned ? '取消置顶' : '固定在最上层'" @mousedown.prevent="togglePin">
+            <i class="i-lucide-pin w-4 h-4" :style="{ color: isPinned ? '#D97706' : undefined }" />
+          </n-button>
           <n-button text size="tiny" title="关闭" @mousedown.prevent="handleClose">
             <i class="i-lucide-x w-4 h-4" />
           </n-button>
