@@ -434,10 +434,10 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
         <div class="flex-1" />
         <div class="close-btn-container no-drag">
           <n-button text size="tiny" :title="isPinned ? '取消置顶' : '固定在最上层'" @mousedown.prevent="togglePin">
-            <i class="i-lucide-pin w-4 h-4" :style="{ color: isPinned ? '#D97706' : undefined }" />
+            <i class="i-lucide-pin w-5 h-5" :style="{ color: isPinned ? '#D97706' : undefined }" />
           </n-button>
           <n-button text size="tiny" title="关闭" @mousedown.prevent="handleClose">
-            <i class="i-lucide-x w-4 h-4" />
+            <i class="i-lucide-x w-5 h-5" />
           </n-button>
         </div>
       </div>
