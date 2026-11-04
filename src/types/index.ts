@@ -1,4 +1,4 @@
-export type NoteColor = 'yellow' | 'blue' | 'green' | 'pink' | 'purple' | 'white'
+export type NoteColor = 'glass' | 'yellow' | 'blue' | 'green' | 'pink' | 'purple' | 'white'
 
 export type EdgeDirection = 'top' | 'bottom' | 'left' | 'right'
 
@@ -53,6 +53,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 }
 
 export const NOTE_COLORS: Record<NoteColor, { light: string; dark: string; text: string; darkText: string }> = {
+  glass:   { light: '#EAF2F8', dark: '#1B2733', text: '#123047', darkText: '#E5E7EB' },
   yellow:  { light: '#FEF3C7', dark: '#44403C', text: '#451A03', darkText: '#FEF3C7' },
   blue:    { light: '#DBEAFE', dark: '#1E3A5F', text: '#1E3A5F', darkText: '#BFDBFE' },
   green:   { light: '#DCFCE7', dark: '#1A3A2A', text: '#14532D', darkText: '#BBF7D0' },

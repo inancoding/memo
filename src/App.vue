@@ -105,7 +105,7 @@ const darkThemeOverrides: GlobalThemeOverrides = {
 async function handleNewNote() {
   console.log('handleNewNote called')
   try {
-    await noteStore.createNote('yellow')
+    await noteStore.createNote('glass')
     console.log('Note created successfully')
   } catch (e) {
     console.error('Failed to create note:', e)

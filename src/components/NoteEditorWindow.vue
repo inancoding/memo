@@ -74,14 +74,16 @@ async function loadNote() {
   }
 }
 
+const isGlass = computed(() => !note.value || note.value.color === 'glass')
+
 const noteBg = computed(() => {
-  if (!note.value) return '#FEF3C7'
+  if (!note.value) return '#EAF2F8'
   const c = NOTE_COLORS[note.value.color]
   return isDark.value ? c.dark : c.light
 })
 
 const noteTextColor = computed(() => {
-  if (!note.value) return '#451A03'
+  if (!note.value) return '#123047'
   const c = NOTE_COLORS[note.value.color]
   return isDark.value ? c.darkText : c.text
 })
@@ -400,13 +402,11 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   >
     <div
       class="editor-window"
-      :style="{
-        background: noteBg,
-        color: noteTextColor,
-      }"
+      :class="{ 'is-glass': isGlass }"
+      :style="isGlass ? undefined : { background: noteBg, color: noteTextColor }"
     >
       <!-- Title Bar / Drag Region -->
-      <div class="titlebar" data-tauri-drag-region :style="{ background: noteBg + 'cc' }">
+      <div class="titlebar" data-tauri-drag-region>
         <!-- Color Dots (visible on focus) -->
         <div class="color-dots" :class="{ 'color-dots-visible': isFocused }">
           <button
@@ -414,7 +414,9 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
             :key="key"
             class="w-4 h-4 rounded-full border-none cursor-pointer transition-all hover:scale-115"
             :class="{ 'ring-2 ring-primary ring-offset-1': note?.color === key }"
-            :style="{ background: isDark ? val.dark : val.light, boxShadow: '0 0 0 1px rgba(0,0,0,0.1)' }"
+            :style="key === 'glass'
+              ? { background: 'rgb(255 255 255 / 0.35)', backdropFilter: 'blur(4px)', border: '1px solid rgb(255 255 255 / 0.85)', boxShadow: '0 0 0 1px rgba(0,0,0,0.1)' }
+              : { background: isDark ? val.dark : val.light, boxShadow: '0 0 0 1px rgba(0,0,0,0.1)' }"
             @mousedown.prevent="changeColor(key)"
           />
         </div>
@@ -442,7 +444,6 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
         @dragover="handleDragOver"
         @dragenter="handleDragEnter"
         @dragleave="handleDragLeave"
-        :style="{ color: noteTextColor }"
         data-placeholder="在这里输入内容..."
       />
 
@@ -455,7 +456,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
       />
 
       <!-- Formatting Toolbar (visible on focus) -->
-      <div class="toolbar" :class="{ 'toolbar-visible': isFocused }" :style="{ background: noteBg + 'cc', borderTop: `1px solid ${noteBg}` }">
+      <div class="toolbar" :class="{ 'toolbar-visible': isFocused }">
         <n-button text size="small" title="加粗" @mousedown.prevent="execCmd('bold')">
           <i class="i-lucide-bold w-5 h-5" />
         </n-button>
@@ -493,9 +494,24 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   height: 100vh;
   display: flex;
   flex-direction: column;
-  border-radius: 12px;
   overflow: hidden;
+  border-radius: 10px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+/* 毛玻璃主题（颜色栏第一项） */
+.editor-window.is-glass {
+  background: rgb(255 255 255 / 0.55);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid rgb(255 255 255 / 0.7);
+  color: #123047;
+}
+
+.dark .editor-window.is-glass {
+  background: rgb(24 24 28 / 0.55);
+  border-color: rgb(255 255 255 / 0.12);
+  color: #e5e7eb;
 }
 
 .titlebar {
@@ -730,6 +746,10 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   transform: translateY(100%);
   transition: opacity 0.2s ease, transform 0.2s ease;
   pointer-events: none;
+}
+
+.dark .toolbar {
+  border-top-color: rgb(255 255 255 / 0.1);
 }
 
 .toolbar-visible {
