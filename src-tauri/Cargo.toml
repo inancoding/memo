@@ -1,6 +1,6 @@
 [package]
 name = "memo"
-version = "0.6.3"
+version = "0.7.0"
 description = "A lightweight desktop sticky note application"
 authors = ["you"]
 edition = "2021"
@@ -15,6 +15,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "tray-icon", "unstable"] }
 tauri-plugin-shell = "2"
+tauri-plugin-autostart = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }

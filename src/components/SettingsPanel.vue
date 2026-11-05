@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { getVersion } from '@tauri-apps/api/app'
+import { invoke } from '@tauri-apps/api/core'
 import { useSettingsStore } from '@/stores/settings'
 import { useTheme } from '@/composables/useTheme'
 
@@ -11,6 +12,7 @@ const { setTheme } = useTheme()
 
 const activeTab = ref<'general' | 'edge' | 'about'>('general')
 const appVersion = ref('')
+const launchAtStartup = ref(settings.settings.launchAtStartup)
 
 onMounted(async () => {
   try {
@@ -18,7 +20,25 @@ onMounted(async () => {
   } catch (e) {
     console.error('getVersion failed:', e)
   }
+  // 从后端读取真实自启状态（注册表为准）
+  try {
+    const enabled = await invoke<boolean>('get_autostart')
+    launchAtStartup.value = enabled
+    settings.updateSettings({ launchAtStartup: enabled })
+  } catch (e) {
+    console.error('get_autostart failed:', e)
+  }
 })
+
+async function handleAutostartChange(v: boolean) {
+  launchAtStartup.value = v
+  settings.updateSettings({ launchAtStartup: v })
+  try {
+    await invoke('set_autostart', { enabled: v })
+  } catch (e) {
+    console.error('set_autostart failed:', e)
+  }
+}
 
 const themeMode = computed({
   get: () => settings.settings.themeMode,
@@ -46,7 +66,7 @@ const themeMode = computed({
         <div class="flex flex-col gap-4 py-2">
           <div class="flex items-center justify-between">
             <span class="text-sm">开机自启动</span>
-            <n-switch v-model:value="settings.settings.launchAtStartup" />
+            <n-switch :value="launchAtStartup" @update:value="handleAutostartChange" />
           </div>
           <div class="flex items-center justify-between">
             <span class="text-sm">新建快捷键</span>

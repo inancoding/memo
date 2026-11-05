@@ -5,15 +5,15 @@ use tauri::{
     AppHandle, Manager,
 };
 
+use crate::{load_desktop_state, save_desktop_state};
+
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let new_note = MenuItemBuilder::with_id("new_note", "新建便签").build(app)?;
-    let show_window = MenuItemBuilder::with_id("show_window", "显示主窗口").build(app)?;
+    let open_main = MenuItemBuilder::with_id("open_main", "打开Memo").build(app)?;
     let separator = tauri::menu::PredefinedMenuItem::separator(app)?;
-    let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
+    let quit = MenuItemBuilder::with_id("quit", "退出Memo").build(app)?;
 
     let menu = MenuBuilder::new(app)
-        .item(&new_note)
-        .item(&show_window)
+        .item(&open_main)
         .item(&separator)
         .item(&quit)
         .build()?;
@@ -38,20 +38,19 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .icon(icon)
         .menu(&menu)
         .on_menu_event(move |app, event| match event.id().as_ref() {
-            "new_note" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                    let _ = window.eval("window.__memoNewNote && window.__memoNewNote()");
-                }
-            }
-            "show_window" => {
+            "open_main" => {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
             }
             "quit" => {
+                // 退出前记录编辑窗口可见状态，供开机自启恢复
+                let mut state = load_desktop_state(app);
+                if let Some(editor) = app.get_webview_window("editor") {
+                    state.editor_visible = editor.is_visible().unwrap_or(false);
+                }
+                save_desktop_state(app, &state);
                 app.exit(0);
             }
             _ => {}

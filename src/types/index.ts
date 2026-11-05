@@ -37,7 +37,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  launchAtStartup: false,
+  launchAtStartup: true,
   themeMode: 'system',
   edgeHideEnabled: true,
   edgeTriggerDistance: 20,

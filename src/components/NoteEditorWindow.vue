@@ -50,6 +50,7 @@ onMounted(async () => {
     event.preventDefault()
     await saveWindowGeometry()
     saveContent()
+    await invoke('set_editor_visible', { visible: false }).catch(console.error)
     await appWindow.hide()
   })
 
