@@ -71,18 +71,29 @@ fn open_editor(app_handle: tauri::AppHandle, note_id: String) -> Result<(), Stri
     if let Some(editor_window) = app_handle.get_webview_window("editor") {
         println!("Found editor window");
         
-        // 通过事件发送 note ID
-        editor_window.emit("open-note", &note_id)
-            .map_err(|e| e.to_string())?;
-        
-        // 如果窗口已可见，只需聚焦；否则显示窗口
+        // 如果窗口已可见，只需聚焦并发送事件
         if editor_window.is_visible().unwrap_or(false) {
             println!("Editor window already visible, focusing");
             editor_window.set_focus().map_err(|e| e.to_string())?;
+            // 直接发送事件
+            editor_window.emit("open-note", &note_id)
+                .map_err(|e| e.to_string())?;
         } else {
             println!("Showing editor window");
             editor_window.show().map_err(|e| e.to_string())?;
             editor_window.set_focus().map_err(|e| e.to_string())?;
+            
+            // 等待窗口加载完成后发送事件
+            let window = editor_window.clone();
+            let note_id_clone = note_id.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                if let Err(e) = window.emit("open-note", &note_id_clone) {
+                    println!("Failed to emit open-note: {}", e);
+                } else {
+                    println!("open-note event emitted successfully");
+                }
+            });
         }
         
         println!("Editor window ready");

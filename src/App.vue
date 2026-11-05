@@ -112,11 +112,15 @@ async function handleNewNote() {
   }
 }
 
-function handleClickNote(note: Note) {
+async function handleClickNote(note: Note) {
   console.log('handleClickNote called with noteId:', note.id)
-  invoke('open_editor', { noteId: note.id })
-    .then(() => console.log('open_editor succeeded'))
-    .catch((e) => console.error('open_editor failed:', e))
+  
+  try {
+    await invoke('open_editor', { noteId: note.id })
+    console.log('Editor window opened')
+  } catch (e) {
+    console.error('Failed to open editor:', e)
+  }
 }
 
 function handlePinNote(note: Note) {

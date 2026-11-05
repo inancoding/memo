@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Capability for main and editor windows",
-  "windows": ["main", "editor"],
+  "windows": ["main", "editor", "editor-*"],
   "permissions": [
     "core:default",
     "core:window:allow-hide",
@@ -12,7 +12,15 @@
     "core:window:allow-start-dragging",
     "core:window:allow-set-always-on-top",
     "core:window:allow-is-always-on-top",
+    "core:window:allow-create",
+    "core:window:allow-get-all-windows",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-inner-size",
+    "core:window:allow-outer-position",
+    "core:webview:allow-create-webview-window",
     "core:event:allow-listen",
+    "core:event:allow-emit",
     "shell:allow-open"
   ]
 }

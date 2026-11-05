@@ -18,21 +18,36 @@ const editorRef = ref<HTMLDivElement | null>(null)
 const noteId = ref<string | null>(null)
 const isPinned = ref(false)
 
-// 监听 open-note 事件
-let unlisten: (() => void) | null = null
+// 监听窗口关闭、大小变化、位置变化
 let unlistenClose: (() => void) | null = null
 let unlistenDragDrop: (() => void) | null = null
+let unlistenResized: (() => void) | null = null
+let unlistenMoved: (() => void) | null = null
+let unlistenOpenNote: (() => void) | null = null
+
+// 防抖定时器
+let resizeTimer: ReturnType<typeof setTimeout> | null = null
+let moveTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
-  unlisten = await listen<string>('open-note', async (event) => {
+  console.log('NoteEditorWindow mounted')
+  
+  // 监听 open-note 事件
+  unlistenOpenNote = await listen<string>('open-note', async (event) => {
+    console.log('Received open-note event:', event.payload)
     noteId.value = event.payload
-    console.log('Received open-note event, noteId:', noteId.value)
-    await loadNote()
+    if (noteId.value) {
+      console.log('Loading note:', noteId.value)
+      await loadNote()
+      console.log('Note loaded:', note.value?.id)
+    }
   })
+  console.log('open-note listener registered')
 
-  // 拦截窗口关闭事件，改为隐藏
+  // 拦截窗口关闭事件，保存位置大小后隐藏
   unlistenClose = await appWindow.onCloseRequested(async (event) => {
     event.preventDefault()
+    await saveWindowGeometry()
     saveContent()
     await appWindow.hide()
   })
@@ -52,13 +67,53 @@ onMounted(async () => {
       }
     }
   })
+
+  // 监听窗口大小变化
+  unlistenResized = await appWindow.onResized(async () => {
+    if (resizeTimer) clearTimeout(resizeTimer)
+    resizeTimer = setTimeout(async () => {
+      await saveWindowGeometry()
+    }, 500)
+  })
+
+  // 监听窗口位置变化
+  unlistenMoved = await appWindow.onMoved(async () => {
+    if (moveTimer) clearTimeout(moveTimer)
+    moveTimer = setTimeout(async () => {
+      await saveWindowGeometry()
+    }, 500)
+  })
 })
 
 onUnmounted(() => {
-  if (unlisten) unlisten()
   if (unlistenClose) unlistenClose()
   if (unlistenDragDrop) unlistenDragDrop()
+  if (unlistenResized) unlistenResized()
+  if (unlistenMoved) unlistenMoved()
+  if (unlistenOpenNote) unlistenOpenNote()
+  if (resizeTimer) clearTimeout(resizeTimer)
+  if (moveTimer) clearTimeout(moveTimer)
 })
+
+async function saveWindowGeometry() {
+  if (!note.value) return
+  try {
+    const size = await appWindow.innerSize()
+    const pos = await appWindow.outerPosition()
+    await invoke('update_note', {
+      request: {
+        id: note.value.id,
+        width: size.width,
+        height: size.height,
+        positionX: pos.x,
+        positionY: pos.y,
+      }
+    })
+    console.log('Saved window geometry:', { width: size.width, height: size.height, x: pos.x, y: pos.y })
+  } catch (e) {
+    console.error('Failed to save window geometry:', e)
+  }
+}
 
 async function loadNote() {
   if (!noteId.value) return
@@ -69,6 +124,20 @@ async function loadNote() {
       await nextTick()
       editorRef.value.innerHTML = note.value.content
       applyAutoLinks()
+      
+      // 恢复窗口大小和位置
+      if (note.value.width && note.value.height) {
+        await appWindow.setSize({ width: note.value.width, height: note.value.height })
+      }
+      if (note.value.positionX !== null && note.value.positionY !== null) {
+        await appWindow.setPosition({ x: note.value.positionX, y: note.value.positionY })
+      }
+      console.log('Window geometry restored:', { 
+        width: note.value.width, 
+        height: note.value.height, 
+        x: note.value.positionX, 
+        y: note.value.positionY 
+      })
     }
   } catch (e) {
     console.error('Failed to load note:', e)
