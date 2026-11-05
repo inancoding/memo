@@ -124,6 +124,7 @@ onUnmounted(() => {
   if (unlistenOpenNote) unlistenOpenNote()
   if (resizeTimer) clearTimeout(resizeTimer)
   if (moveTimer) clearTimeout(moveTimer)
+  if (inputTimer) clearTimeout(inputTimer)
 })
 
 async function saveWindowGeometry() {
@@ -200,14 +201,72 @@ const themeOverrides: GlobalThemeOverrides = {
 }
 
 function handleFocus() {
-  removeAutoLinks()
   isFocused.value = true
 }
 
 function handleBlur() {
   isFocused.value = false
+  refreshAutoLinks()
   saveContent()
+}
+
+// 输入时实时检测链接（防抖），并保持光标位置
+let inputTimer: ReturnType<typeof setTimeout> | null = null
+function handleInput() {
+  if (inputTimer) clearTimeout(inputTimer)
+  inputTimer = setTimeout(() => {
+    refreshAutoLinks()
+    saveContent()
+  }, 600)
+}
+
+// 保存光标在编辑器内的字符偏移
+function getCaretOffset(root: HTMLElement): number {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return -1
+  const range = sel.getRangeAt(0)
+  if (!root.contains(range.startContainer)) return -1
+  const pre = document.createRange()
+  pre.selectNodeContents(root)
+  pre.setEnd(range.startContainer, range.startOffset)
+  return pre.toString().length
+}
+
+// 按字符偏移恢复光标
+function setCaretOffset(root: HTMLElement, offset: number) {
+  if (offset < 0) return
+  const sel = window.getSelection()
+  if (!sel) return
+  const range = document.createRange()
+  let remaining = offset
+  let found = false
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let node: Node | null
+  while ((node = walker.nextNode())) {
+    const len = node.nodeValue?.length || 0
+    if (remaining <= len) {
+      range.setStart(node, remaining)
+      range.collapse(true)
+      found = true
+      break
+    }
+    remaining -= len
+  }
+  if (found) {
+    sel.removeAllRanges()
+    sel.addRange(range)
+  }
+}
+
+// 重新检测链接：先移除旧高亮再重新应用，保持光标位置
+function refreshAutoLinks() {
+  const root = editorRef.value
+  if (!root) return
+  const hadFocus = document.activeElement === root
+  const offset = hadFocus ? getCaretOffset(root) : -1
+  removeAutoLinks()
   applyAutoLinks()
+  if (hadFocus && offset >= 0) setCaretOffset(root, offset)
 }
 
 function saveContent() {
@@ -295,15 +354,56 @@ function removeAutoLinks() {
   root.normalize()
 }
 
+// 点击链接：网址用浏览器打开，邮箱用系统邮箱，手机号拨号
+function openAutoLink(el: HTMLElement) {
+  const raw = (el.textContent || '').trim()
+  if (!raw) return
+  const type = el.getAttribute('data-type') || detectLinkType(raw)
+  let url = raw
+  if (type === 'email') {
+    url = `mailto:${raw}`
+  } else if (type === 'phone') {
+    url = `tel:${raw}`
+  } else if (/^www\./i.test(raw)) {
+    url = `https://${raw}`
+  }
+  invoke('plugin:shell|open', { path: url }).catch(err => {
+    console.error('Failed to open link:', err)
+  })
+}
+
 function execCmd(command: string, value?: string) {
   document.execCommand(command, false, value)
   editorRef.value?.focus()
 }
 
 function insertCheckbox() {
-  const checkbox = '<div class="task-item"><label class="n-checkbox-wrapper" contenteditable="false"><input type="checkbox" class="n-checkbox-input" /><span class="n-checkbox-box"><span class="n-checkbox-icon"></span></span></label><span class="task-text">待办事项</span></div><div><br></div>'
-  document.execCommand('insertHTML', false, checkbox)
-  editorRef.value?.focus()
+  const editor = editorRef.value
+  if (!editor) return
+  editor.focus()
+
+  const taskItem = document.createElement('div')
+  taskItem.className = 'task-item'
+  taskItem.innerHTML = '<label class="n-checkbox-wrapper" contenteditable="false"><input type="checkbox" class="n-checkbox-input" /><span class="n-checkbox-box"><span class="n-checkbox-icon"></span></span></label><span class="task-text"><br></span>'
+
+  const selection = window.getSelection()
+  if (selection && selection.rangeCount > 0) {
+    const range = selection.getRangeAt(0)
+    range.deleteContents()
+    range.insertNode(taskItem)
+    // 光标定位到新复选框的文本区，不换行
+    const textEl = taskItem.querySelector('.task-text')
+    if (textEl) {
+      const newRange = document.createRange()
+      newRange.setStart(textEl, 0)
+      newRange.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(newRange)
+    }
+  } else {
+    editor.appendChild(taskItem)
+  }
+  saveContent()
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -450,6 +550,14 @@ const resizeHandleStyle = computed(() => {
 
 function handleEditorClick(e: MouseEvent) {
   const target = e.target as HTMLElement
+  // 点击自动识别的链接：打开网址 / 邮箱 / 拨号
+  const linkEl = target.closest('.auto-link') as HTMLElement | null
+  if (linkEl) {
+    e.preventDefault()
+    e.stopPropagation()
+    openAutoLink(linkEl)
+    return
+  }
   if (target.tagName === 'IMG') {
     document.querySelectorAll('.editor-content img.selected').forEach(img => img.classList.remove('selected'))
     target.classList.add('selected')
@@ -555,6 +663,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
         suppress-content-editable-warning
         @focus="handleFocus"
         @blur="handleBlur"
+        @input="handleInput"
         @click="handleEditorClick"
         @keydown="handleKeydown"
         @scroll="updateResizeHandlePosition"
@@ -850,7 +959,9 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 /* 自动识别的网址 / 邮箱 / 手机号高亮 */
 .editor-content .auto-link {
   color: #2563EB;
+  cursor: pointer;
   word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .editor-content .auto-link[data-type="url"],
