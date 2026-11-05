@@ -2,7 +2,8 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { darkTheme } from 'naive-ui'
 import type { GlobalThemeOverrides } from 'naive-ui'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getCurrentWindow, PhysicalSize, PhysicalPosition } from '@tauri-apps/api/window'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useTheme } from '@/composables/useTheme'
@@ -52,21 +53,51 @@ onMounted(async () => {
     await appWindow.hide()
   })
 
-  // 监听 Tauri 窗口拖放事件
-  unlistenDragDrop = await appWindow.onDragDropEvent(async (event) => {
-    console.log('Drag drop event:', event)
+  // 监听 Tauri 拖放事件（Webview 级别，v2 推荐方式）
+  try {
+    unlistenDragDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
+      console.log('Drag drop event:', event)
     if (event.payload.type === 'drop') {
       const paths = event.payload.paths
       for (const path of paths) {
         if (path.match(/\.(png|jpg|jpeg|gif|webp|bmp)$/i)) {
           const assetUrl = convertFileSrc(path)
           console.log('Inserting image:', assetUrl)
-          document.execCommand('insertHTML', false, `<img src="${assetUrl}" class="editor-image" />`)
-          saveContent()
+          
+          // 确保编辑器有焦点
+          if (editorRef.value) {
+            editorRef.value.focus()
+            await nextTick()
+          }
+          
+          // 插入图片
+          if (editorRef.value) {
+            const img = document.createElement('img')
+            img.src = assetUrl
+            img.className = 'editor-image'
+            
+            // 获取当前选区或追加到末尾
+            const selection = window.getSelection()
+            if (selection && selection.rangeCount > 0) {
+              const range = selection.getRangeAt(0)
+              range.deleteContents()
+              range.insertNode(img)
+              // 将光标移到图片后面
+              range.setStartAfter(img)
+              range.collapse(true)
+            } else {
+              editorRef.value.appendChild(img)
+            }
+            saveContent()
+          }
         }
       }
     }
-  })
+    })
+    console.log('Drag drop listener registered')
+  } catch (e) {
+    console.error('Failed to register drag drop listener:', e)
+  }
 
   // 监听窗口大小变化
   unlistenResized = await appWindow.onResized(async () => {
@@ -127,10 +158,11 @@ async function loadNote() {
       
       // 恢复窗口大小和位置
       if (note.value.width && note.value.height) {
-        await appWindow.setSize({ width: note.value.width, height: note.value.height })
+        await appWindow.setSize(new PhysicalSize(note.value.width, note.value.height))
       }
-      if (note.value.positionX !== null && note.value.positionY !== null) {
-        await appWindow.setPosition({ x: note.value.positionX, y: note.value.positionY })
+      if (note.value.positionX !== null && note.value.positionX !== undefined && 
+          note.value.positionY !== null && note.value.positionY !== undefined) {
+        await appWindow.setPosition(new PhysicalPosition(note.value.positionX, note.value.positionY))
       }
       console.log('Window geometry restored:', { 
         width: note.value.width, 
@@ -357,11 +389,14 @@ function insertImage() {
 }
 
 function handleDrop(e: DragEvent) {
+  console.log('handleDrop called', e)
   e.preventDefault()
   e.stopPropagation()
   const files = e.dataTransfer?.files
+  console.log('Files:', files)
   if (!files || files.length === 0) return
   for (const file of Array.from(files)) {
+    console.log('Processing file:', file.name, file.type)
     if (!file.type.startsWith('image/')) continue
     const reader = new FileReader()
     reader.onload = () => {
