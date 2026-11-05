@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { darkTheme } from 'naive-ui'
 import type { GlobalThemeOverrides } from 'naive-ui'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
+import type { UnlistenFn } from '@tauri-apps/api/event'
 import { useTheme } from './composables/useTheme'
 import { useNoteStore } from './stores/notes'
 import NoteList from './components/NoteList.vue'
@@ -18,8 +20,24 @@ const appWindow = getCurrentWindow()
 
 const noteCount = computed(() => noteStore.notes.filter(n => n.deletedAt === null).length)
 
-onMounted(() => {
+// 置顶便签排到最前，其余保持数据库返回顺序（updated_at DESC）
+const visibleNotes = computed(() => {
+  const active = noteStore.notes.filter(n => n.deletedAt === null)
+  return [...active].sort((a, b) => Number(b.isPinned) - Number(a.isPinned))
+})
+
+let unlistenNotesChanged: UnlistenFn | null = null
+
+onMounted(async () => {
   noteStore.loadNotes()
+  // 全局快捷键在后端新建便签后刷新列表
+  unlistenNotesChanged = await listen('notes-changed', () => {
+    noteStore.loadNotes()
+  })
+})
+
+onUnmounted(() => {
+  if (unlistenNotesChanged) unlistenNotesChanged()
 })
 
 const themeOverrides: GlobalThemeOverrides = {
@@ -179,7 +197,7 @@ async function handleClose() {
         </div>
 
         <NoteList
-          :notes="noteStore.notes.filter(n => n.deletedAt === null)"
+          :notes="visibleNotes"
           @click-note="handleClickNote"
           @pin-note="handlePinNote"
           @delete-note="handleDeleteNote"

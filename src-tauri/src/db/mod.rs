@@ -28,6 +28,9 @@ pub struct Database {
     conn: Mutex<Connection>,
 }
 
+// 首次安装时植入的欢迎便签内容（富文本 HTML，与编辑器格式一致）
+const WELCOME_CONTENT: &str = r#"<p><strong>欢迎使用 Memo</strong></p><p>Memo 是一款轻量桌面便签应用，帮你随手记录灵感与待办事项。</p><p><strong>主要功能</strong></p><ul><li>富文本编辑：加粗、斜体、列表、复选框，支持拖拽插入图片并缩放</li><li>自动识别网址、邮箱、手机号并彩色高亮，点击即可打开</li><li>多色便签与毛玻璃主题，支持亮色 / 暗色模式</li><li>便签窗口可置顶固定，自动记忆位置与大小</li><li>开机自启动，并恢复上次打开的便签</li><li>系统托盘：打开主窗口或退出应用</li></ul><p><strong>使用方法</strong></p><ul><li>点击右下角 + 按钮新建便签</li><li>点击任意便签打开独立编辑窗口</li><li>鼠标悬停便签卡片，可置顶或删除</li><li>关闭编辑窗口即隐藏，内容不会丢失</li></ul><p><strong>快捷键</strong></p><ul><li>Ctrl+Shift+N：新建便签</li><li>Ctrl+Shift+M：显示 / 隐藏主窗口</li></ul><p>这条便签可以随时删除，祝你使用愉快！</p>"#;
+
 impl Database {
     pub fn new(db_path: &str) -> Result<Self> {
         let conn = Connection::open(db_path)?;
@@ -81,6 +84,17 @@ impl Database {
             updated_at: now,
             deleted_at: None,
         })
+    }
+
+    pub fn seed_welcome_note(&self) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO notes (id, title, content, color, is_pinned, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![id, "欢迎使用 Memo", WELCOME_CONTENT, "glass", 1, now, now],
+        )?;
+        Ok(())
     }
 
     pub fn get_notes(&self) -> Result<Vec<NoteRow>> {

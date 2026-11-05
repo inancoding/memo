@@ -10,7 +10,7 @@ const emit = defineEmits<{ close: [] }>()
 const settings = useSettingsStore()
 const { setTheme } = useTheme()
 
-const activeTab = ref<'general' | 'edge' | 'about'>('general')
+const activeTab = ref<'general' | 'about'>('general')
 const appVersion = ref('')
 const launchAtStartup = ref(settings.settings.launchAtStartup)
 
@@ -87,44 +87,6 @@ const themeMode = computed({
         </div>
       </n-tab-pane>
 
-      <!-- Edge Hide -->
-      <n-tab-pane name="edge" tab="边缘隐藏">
-        <div class="flex flex-col gap-4 py-2">
-          <div class="flex items-center justify-between">
-            <span class="text-sm">启用边缘隐藏</span>
-            <n-switch v-model:value="settings.settings.edgeHideEnabled" />
-          </div>
-          <div class="flex items-center justify-between">
-            <span class="text-sm">吸附触发距离</span>
-            <span class="text-xs text-muted-fg">{{ settings.settings.edgeTriggerDistance }}px</span>
-          </div>
-          <div class="flex items-center justify-between">
-            <span class="text-sm">可见指示条宽度</span>
-            <span class="text-xs text-muted-fg">{{ settings.settings.edgeVisibleBarWidth }}px</span>
-          </div>
-          <div class="flex items-center justify-between">
-            <span class="text-sm">动画时长</span>
-            <span class="text-xs text-muted-fg">{{ settings.settings.edgeAnimationDuration }}ms</span>
-          </div>
-          <div class="flex items-center justify-between">
-            <span class="text-sm">收回延迟</span>
-            <span class="text-xs text-muted-fg">{{ settings.settings.edgeRetractDelay }}ms</span>
-          </div>
-          <div>
-            <span class="text-sm block mb-2">启用方向</span>
-            <div class="flex gap-4 flex-wrap">
-              <n-checkbox
-                v-for="dir in (['top', 'bottom', 'left', 'right'] as const)"
-                :key="dir"
-                :checked="settings.settings.enabledEdges[dir]"
-                :label="dir === 'top' ? '上' : dir === 'bottom' ? '下' : dir === 'left' ? '左' : '右'"
-                @update:checked="(v: boolean) => settings.updateSettings({ enabledEdges: { ...settings.settings.enabledEdges, [dir]: v } })"
-              />
-            </div>
-          </div>
-        </div>
-      </n-tab-pane>
-
       <!-- About -->
       <n-tab-pane name="about" tab="关于">
         <div class="flex flex-col gap-4 py-2">
@@ -140,12 +102,8 @@ const themeMode = computed({
             <span class="text-sm">v{{ appVersion || '—' }}</span>
           </div>
           <div class="flex items-center justify-between">
-            <span class="text-muted-fg text-sm">技术栈</span>
-            <span class="text-sm">Tauri 2 + Vue 3 + Naive UI</span>
-          </div>
-          <div class="flex items-center justify-between">
-            <span class="text-muted-fg text-sm">许可证</span>
-            <span class="text-sm">MIT</span>
+            <span class="text-muted-fg text-sm">作者</span>
+            <span class="text-sm">nancoding</span>
           </div>
         </div>
       </n-tab-pane>

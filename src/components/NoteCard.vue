@@ -80,24 +80,30 @@ const timeAgo = computed(() => formatTime(props.note.updatedAt))
 
     <div class="flex items-center justify-between pt-2 border-t border-black/6 dark:border-white/10 text-xs opacity-40">
       <span>{{ timeAgo }}</span>
-      <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <n-button
           text
           size="tiny"
           title="置顶"
+          class="opacity-100!"
           @click.stop="emit('pin', note)"
         >
-          <i :class="note.isPinned ? 'i-lucide-pin text-primary!' : 'i-lucide-pin-off'" class="w-3.5 h-3.5" />
+          <i :class="note.isPinned ? 'i-lucide-pin text-primary!' : 'i-lucide-pin-off'" class="w-5 h-5" />
         </n-button>
-        <n-popconfirm @positive-click="emit('delete', note)">
+        <n-popconfirm
+          positive-text="确定"
+          negative-text="取消"
+          @positive-click="emit('delete', note)"
+        >
           <template #trigger>
             <n-button
               text
               size="tiny"
               title="删除"
+              class="opacity-100!"
               @click.stop
             >
-              <i class="i-lucide-trash-2 w-3.5 h-3.5" />
+              <i class="i-lucide-trash-2 w-5 h-5" />
             </n-button>
           </template>
           确定删除这条便签吗？

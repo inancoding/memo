@@ -23,33 +23,11 @@ export interface Note {
 export interface AppSettings {
   launchAtStartup: boolean
   themeMode: 'light' | 'dark' | 'system'
-  edgeHideEnabled: boolean
-  edgeTriggerDistance: number
-  edgeVisibleBarWidth: number
-  edgeAnimationDuration: number
-  edgeRetractDelay: number
-  enabledEdges: {
-    top: boolean
-    bottom: boolean
-    left: boolean
-    right: boolean
-  }
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   launchAtStartup: true,
   themeMode: 'system',
-  edgeHideEnabled: true,
-  edgeTriggerDistance: 20,
-  edgeVisibleBarWidth: 4,
-  edgeAnimationDuration: 200,
-  edgeRetractDelay: 300,
-  enabledEdges: {
-    top: true,
-    bottom: false,
-    left: true,
-    right: true,
-  },
 }
 
 export const NOTE_COLORS: Record<NoteColor, { light: string; dark: string; text: string; darkText: string }> = {

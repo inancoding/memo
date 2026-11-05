@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::{image::Image, Manager, Emitter};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use std::fs;
 
 mod commands;
@@ -166,6 +167,7 @@ pub fn run() {
             MacosLauncher::LaunchAgent,
             Some(vec!["--autostart"]),
         ))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::notes::create_note,
             commands::notes::get_notes,
@@ -183,7 +185,64 @@ pub fn run() {
             let app_handle = app.handle().clone();
 
             db::init_db(&app_handle)?;
+
+            // 首次运行时植入一条欢迎便签（用户可自行删除，删除后不再重建）
+            let welcome_marker = app_handle
+                .path()
+                .app_data_dir()
+                .expect("failed to get app data dir")
+                .join("welcome_note_seeded");
+            if !welcome_marker.exists() {
+                if let Some(db) = app_handle.try_state::<db::Database>() {
+                    if let Err(e) = db.seed_welcome_note() {
+                        println!("seed welcome note failed: {}", e);
+                    }
+                }
+                let _ = fs::write(&welcome_marker, "1");
+            }
+
             tray::setup_tray(&app_handle)?;
+
+            // 全局快捷键
+            {
+                let gs = app_handle.global_shortcut();
+
+                // Ctrl+Shift+N：新建便签并打开编辑窗口
+                let _ = gs.on_shortcut(
+                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyN),
+                    |app, _sc, event| {
+                        if event.state != ShortcutState::Pressed {
+                            return;
+                        }
+                        let db = app.state::<db::Database>();
+                        match db.create_note("glass", "") {
+                            Ok(note) => {
+                                let _ = app.emit("notes-changed", ());
+                                show_editor_with_note(app, &note.id);
+                            }
+                            Err(e) => println!("shortcut create_note failed: {}", e),
+                        }
+                    },
+                );
+
+                // Ctrl+Shift+M：显示/隐藏主窗口
+                let _ = gs.on_shortcut(
+                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyM),
+                    |app, _sc, event| {
+                        if event.state != ShortcutState::Pressed {
+                            return;
+                        }
+                        if let Some(window) = app.get_webview_window("main") {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    },
+                );
+            }
 
             // 首次运行时默认开启开机自启（之后尊重用户设置）
             let marker = app_handle
