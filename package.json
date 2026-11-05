@@ -1,7 +1,7 @@
 {
   "name": "memo",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.7.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,6 @@
   "dependencies": {
     "@lucide/vue": "^1.64.0",
     "@tauri-apps/api": "^2.12.4",
-    "md-editor-v3": "^7.1.0",
     "naive-ui": "^2.45.3",
     "pinia": "^3.0.2",
     "vue": "^3.5.13"

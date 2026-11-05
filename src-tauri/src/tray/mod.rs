@@ -1,9 +1,12 @@
 use tauri::{
     image::Image,
     menu::{MenuBuilder, MenuItemBuilder},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    tray::TrayIconBuilder,
     AppHandle, Manager,
 };
+
+#[cfg(not(target_os = "linux"))]
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 
 use crate::{load_desktop_state, save_desktop_state};
 
@@ -34,7 +37,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             Image::new_owned(pixels, 256, 256)
         });
 
-    let _tray = TrayIconBuilder::new()
+    let builder = TrayIconBuilder::new()
         .icon(icon)
         .menu(&menu)
         .on_menu_event(move |app, event| match event.id().as_ref() {
@@ -54,22 +57,28 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 app.exit(0);
             }
             _ => {}
-        })
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                let app = tray.app_handle();
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+        });
+
+    // Windows/macOS：左键点击直接打开主窗口。
+    // Linux：appindicator 左键点击原生弹出菜单（自定义左键事件通常不触发，
+    // 且 show_menu_on_left_click 在 Linux 不受支持），因此统一走菜单里的“打开Memo”。
+    #[cfg(not(target_os = "linux"))]
+    let builder = builder.on_tray_icon_event(|tray, event| {
+        if let TrayIconEvent::Click {
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+            ..
+        } = event
+        {
+            let app = tray.app_handle();
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
             }
-        })
-        .build(app)?;
+        }
+    });
+
+    let _tray = builder.build(app)?;
 
     Ok(())
 }
