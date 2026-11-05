@@ -573,6 +573,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 
 <style>
 .editor-window {
+  position: relative;
   width: 100vw;
   height: 100vh;
   display: flex;
@@ -639,7 +640,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 
 .editor-content {
   flex: 1;
-  padding: 12px 16px;
+  padding: 0 16px;
   overflow-y: auto;
   outline: none;
   font-size: 14px;
@@ -670,6 +671,11 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 
 .editor-content li {
   margin: 0;
+}
+
+/* 列表项中的图片垂直居中 */
+.editor-content li img {
+  vertical-align: middle;
 }
 
 .editor-content::-webkit-scrollbar {
@@ -730,6 +736,10 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   margin: 0;
   padding: 0;
   line-height: 1.6;
+}
+
+.editor-content .task-item img {
+  vertical-align: middle;
 }
 
 .editor-content .task-item .task-text {
@@ -819,16 +829,24 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 }
 
 .toolbar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
   height: 40px;
   display: flex;
   align-items: center;
   padding: 0 12px;
   gap: 6px;
-  flex-shrink: 0;
   opacity: 0;
   transform: translateY(100%);
   transition: opacity 0.2s ease, transform 0.2s ease;
   pointer-events: none;
+  background: inherit;
+  backdrop-filter: inherit;
+  -webkit-backdrop-filter: inherit;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  z-index: 10;
 }
 
 .dark .toolbar {
