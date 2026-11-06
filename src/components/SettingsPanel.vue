@@ -47,6 +47,11 @@ const themeMode = computed({
     setTheme(v)
   },
 })
+
+const edgeHide = computed({
+  get: () => settings.settings.edgeHide,
+  set: (v: boolean) => settings.updateSettings({ edgeHide: v }),
+})
 </script>
 
 <template>
@@ -67,6 +72,13 @@ const themeMode = computed({
           <div class="flex items-center justify-between">
             <span class="text-sm">开机自启动</span>
             <n-switch :value="launchAtStartup" @update:value="handleAutostartChange" />
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="flex flex-col">
+              <span class="text-sm">边缘自动隐藏</span>
+              <span class="text-xs text-muted-fg">便签贴屏幕边缘时收起为窄条</span>
+            </div>
+            <n-switch v-model:value="edgeHide" />
           </div>
           <div class="flex items-center justify-between">
             <span class="text-sm">新建快捷键</span>

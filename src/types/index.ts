@@ -23,11 +23,13 @@ export interface Note {
 export interface AppSettings {
   launchAtStartup: boolean
   themeMode: 'light' | 'dark' | 'system'
+  edgeHide: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   launchAtStartup: true,
   themeMode: 'system',
+  edgeHide: false,
 }
 
 export const NOTE_COLORS: Record<NoteColor, { light: string; dark: string; text: string; darkText: string }> = {

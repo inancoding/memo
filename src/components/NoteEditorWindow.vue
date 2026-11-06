@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { darkTheme } from 'naive-ui'
 import type { GlobalThemeOverrides } from 'naive-ui'
-import { getCurrentWindow, PhysicalSize, PhysicalPosition } from '@tauri-apps/api/window'
+import { getCurrentWindow, currentMonitor, PhysicalSize, PhysicalPosition } from '@tauri-apps/api/window'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
@@ -30,9 +30,213 @@ let unlistenOpenNote: (() => void) | null = null
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
 let moveTimer: ReturnType<typeof setTimeout> | null = null
 
+// ===== 边缘自动隐藏（贴近左/右/顶边时滑出屏幕，仅露出窄条） =====
+type SnapEdge = 'left' | 'right' | 'top'
+const TRIGGER_DISTANCE = 24 // 触发吸附的距离（逻辑像素）
+const BAR_SIZE = 10         // 收起后露出的窄条尺寸（逻辑像素）
+const ANIM_DURATION = 220   // 动画时长 ms
+const REHIDE_DELAY = 700    // 鼠标离开后重新收起的延迟 ms
+
+const snappedEdge = ref<SnapEdge | null>(null)
+const isHidden = ref(false)
+let isAnimating = false
+// 已贴边停靠并唤回时置真：抑制"按距离检测"的自动收起（否则贴边唤回会立即被判定为靠近边缘而反复收起）。
+// 仅在用户主动拖动标题栏时清除，使其可重新吸附或脱离边缘。
+let suppressAutoHide = false
+let revealedPos: { x: number; y: number } | null = null
+let rehideTimer: ReturnType<typeof setTimeout> | null = null
+let animFrame = 0
+
+// 边缘隐藏开关（读取主窗口写入的设置，localStorage 同源跨窗口共享）
+function readEdgeHideSetting(): boolean {
+  try {
+    const s = JSON.parse(localStorage.getItem('memo-settings') || '{}')
+    return s?.edgeHide === true
+  } catch {
+    return false
+  }
+}
+const edgeHideEnabled = ref(readEdgeHideSetting())
+function handleStorageChange(e: StorageEvent) {
+  if (e.key === 'memo-settings') edgeHideEnabled.value = readEdgeHideSetting()
+}
+// 关闭开关时，若当前处于收起状态则立即唤回并脱离停靠
+watch(edgeHideEnabled, async (on) => {
+  if (on) return
+  cancelRehide()
+  suppressAutoHide = false
+  if (isHidden.value) await revealFromEdge()
+  snappedEdge.value = null
+  await appWindow.setAlwaysOnTop(isPinned.value)
+})
+
+async function readGeometry() {
+  const monitor = await currentMonitor()
+  if (!monitor) return null
+  const size = await appWindow.outerSize()
+  const pos = await appWindow.outerPosition()
+  return { monitor, size, pos, scale: monitor.scaleFactor || 1 }
+}
+
+async function detectSnapEdge(): Promise<SnapEdge | null> {
+  const g = await readGeometry()
+  if (!g) return null
+  const { monitor, size, pos, scale } = g
+  const trigger = TRIGGER_DISTANCE * scale
+  const mLeft = monitor.position.x
+  const mTop = monitor.position.y
+  const mRight = mLeft + monitor.size.width
+  const dTop = pos.y - mTop
+  const dLeft = pos.x - mLeft
+  const dRight = mRight - (pos.x + size.width)
+  let best: SnapEdge | null = null
+  let bestDist = Infinity
+  if (dTop <= trigger && dTop < bestDist) { best = 'top'; bestDist = dTop }
+  if (dLeft <= trigger && dLeft < bestDist) { best = 'left'; bestDist = dLeft }
+  if (dRight <= trigger && dRight < bestDist) { best = 'right'; bestDist = dRight }
+  return best
+}
+
+async function windowBorder() {
+  const outer = await appWindow.outerSize()
+  const inner = await appWindow.innerSize()
+  return {
+    borderX: Math.max(0, Math.round((outer.width - inner.width) / 2)),
+    borderY: Math.max(0, Math.round((outer.height - inner.height) / 2)),
+  }
+}
+
+async function hiddenTarget(edge: SnapEdge) {
+  const g = await readGeometry()
+  if (!g) return null
+  const { monitor, size, pos, scale } = g
+  // 可调整大小的无边框窗口在 Windows 上有不可见的调整边框，outer 坐标含边框，
+  // 而 DOM（把手条）在 client 区域内缩 border。必须补偿，否则露出的 client 窄条会被边框吃掉变成 0px。
+  const { borderX, borderY } = await windowBorder()
+  const bar = Math.round(BAR_SIZE * scale)
+  const mLeft = monitor.position.x
+  const mTop = monitor.position.y
+  const mRight = mLeft + monitor.size.width
+  // 目标：让 client 的可见窄条正好等于 bar 像素
+  if (edge === 'right') return { x: Math.round(mRight - bar - borderX), y: pos.y }
+  if (edge === 'left') return { x: Math.round(mLeft - size.width + bar + borderX), y: pos.y }
+  return { x: pos.x, y: Math.round(mTop + bar + borderY - size.height) }
+}
+
+function animateWindow(fromX: number, fromY: number, toX: number, toY: number, onDone?: () => void) {
+  cancelAnimationFrame(animFrame)
+  isAnimating = true
+  const start = performance.now()
+  const ease = (t: number) => 1 - Math.pow(1 - t, 3)
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / ANIM_DURATION)
+    const e = ease(t)
+    const x = Math.round(fromX + (toX - fromX) * e)
+    const y = Math.round(fromY + (toY - fromY) * e)
+    appWindow.setPosition(new PhysicalPosition(x, y))
+    if (t < 1) {
+      animFrame = requestAnimationFrame(step)
+    } else {
+      isAnimating = false
+      onDone?.()
+    }
+  }
+  animFrame = requestAnimationFrame(step)
+}
+
+async function hideToEdge(edge: SnapEdge) {
+  const pos = await appWindow.outerPosition()
+  const target = await hiddenTarget(edge)
+  if (!target) return
+  const g = await readGeometry()
+  if (!g) return
+  const { borderX, borderY } = await windowBorder()
+  const mLeft = g.monitor.position.x
+  const mTop = g.monitor.position.y
+  const mRight = mLeft + g.monitor.size.width
+  const mBottom = mTop + g.monitor.size.height
+  // 唤回位置：贴靠对应边缘（client 与屏幕边齐平，视觉上"停靠"无大缝隙），
+  // 另一轴保持用户拖动的位置并夹取到屏幕内，保证整窗可见。
+  let rx = pos.x
+  let ry = pos.y
+  if (edge === 'left') rx = mLeft - borderX
+  else if (edge === 'right') rx = mRight - g.size.width + borderX
+  else ry = mTop - borderY
+  rx = Math.min(Math.max(rx, mLeft - borderX), mRight - g.size.width + borderX)
+  ry = Math.min(Math.max(ry, mTop - borderY), mBottom - g.size.height + borderY)
+  revealedPos = { x: Math.round(rx), y: Math.round(ry) }
+  await appWindow.setAlwaysOnTop(true)
+  animateWindow(pos.x, pos.y, target.x, target.y, () => {
+    isHidden.value = true
+  })
+}
+
+async function revealFromEdge() {
+  if (!isHidden.value || !revealedPos) return
+  const pos = await appWindow.outerPosition()
+  const target = revealedPos
+  isHidden.value = false
+  suppressAutoHide = true
+  animateWindow(pos.x, pos.y, target.x, target.y)
+}
+
+async function evaluateSnap() {
+  if (!edgeHideEnabled.value || isAnimating || isHidden.value || suppressAutoHide) return
+  const edge = await detectSnapEdge()
+  if (edge) {
+    snappedEdge.value = edge
+    await hideToEdge(edge)
+  } else if (snappedEdge.value) {
+    snappedEdge.value = null
+    await appWindow.setAlwaysOnTop(isPinned.value)
+  }
+}
+
+// 用户主动拖动标题栏时解除停靠抑制，使其可重新吸附或脱离边缘
+function handleDragStart() {
+  suppressAutoHide = false
+  cancelRehide()
+}
+
+function cancelRehide() {
+  if (rehideTimer) { clearTimeout(rehideTimer); rehideTimer = null }
+}
+
+function scheduleRehide() {
+  if (!edgeHideEnabled.value || !snappedEdge.value || isHidden.value || isFocused.value) return
+  cancelRehide()
+  rehideTimer = setTimeout(async () => {
+    if (isFocused.value || isHidden.value || isAnimating) return
+    // 实时复检：若用户已把便签拖离边缘则脱离停靠，不再收回
+    const edge = await detectSnapEdge()
+    if (edge) {
+      snappedEdge.value = edge
+      await hideToEdge(edge)
+    } else {
+      snappedEdge.value = null
+      suppressAutoHide = false
+      await appWindow.setAlwaysOnTop(isPinned.value)
+    }
+  }, REHIDE_DELAY)
+}
+
+function handleWindowMouseEnter() {
+  cancelRehide()
+  if (edgeHideEnabled.value && isHidden.value) revealFromEdge()
+}
+
+function handleWindowMouseLeave() {
+  if (isHidden.value) return
+  if (edgeHideEnabled.value) scheduleRehide()
+}
+
 onMounted(async () => {
   console.log('NoteEditorWindow mounted')
-  
+
+  // 边缘隐藏开关：读取设置并监听主窗口的变更（同源跨窗口 storage 事件）
+  edgeHideEnabled.value = readEdgeHideSetting()
+  window.addEventListener('storage', handleStorageChange)
+
   // 监听 open-note 事件
   unlistenOpenNote = await listen<string>('open-note', async (event) => {
     console.log('Received open-note event:', event.payload)
@@ -110,9 +314,12 @@ onMounted(async () => {
 
   // 监听窗口位置变化
   unlistenMoved = await appWindow.onMoved(async () => {
+    if (isAnimating) return
     if (moveTimer) clearTimeout(moveTimer)
     moveTimer = setTimeout(async () => {
+      if (isAnimating || isHidden.value) return
       await saveWindowGeometry()
+      await evaluateSnap()
     }, 500)
   })
 })
@@ -126,23 +333,37 @@ onUnmounted(() => {
   if (resizeTimer) clearTimeout(resizeTimer)
   if (moveTimer) clearTimeout(moveTimer)
   if (inputTimer) clearTimeout(inputTimer)
+  if (rehideTimer) clearTimeout(rehideTimer)
+  cancelAnimationFrame(animFrame)
+  window.removeEventListener('storage', handleStorageChange)
 })
 
 async function saveWindowGeometry() {
-  if (!note.value) return
+  if (!note.value || isAnimating) return
   try {
     const size = await appWindow.innerSize()
-    const pos = await appWindow.outerPosition()
+    let x: number
+    let y: number
+    if (isHidden.value && revealedPos) {
+      // 收起状态露出的是窄条，持久化收起前的可见位置
+      x = revealedPos.x
+      y = revealedPos.y
+    } else {
+      const pos = await appWindow.outerPosition()
+      x = pos.x
+      y = pos.y
+      revealedPos = { x, y }
+    }
     await invoke('update_note', {
       request: {
         id: note.value.id,
         width: size.width,
         height: size.height,
-        positionX: pos.x,
-        positionY: pos.y,
+        positionX: x,
+        positionY: y,
       }
     })
-    console.log('Saved window geometry:', { width: size.width, height: size.height, x: pos.x, y: pos.y })
+    console.log('Saved window geometry:', { width: size.width, height: size.height, x, y })
   } catch (e) {
     console.error('Failed to save window geometry:', e)
   }
@@ -150,6 +371,7 @@ async function saveWindowGeometry() {
 
 async function loadNote() {
   if (!noteId.value) return
+  edgeHideEnabled.value = readEdgeHideSetting()
   try {
     const notes = await invoke<Note[]>('get_notes')
     note.value = notes.find(n => n.id === noteId.value) || null
@@ -165,6 +387,7 @@ async function loadNote() {
       if (note.value.positionX !== null && note.value.positionX !== undefined && 
           note.value.positionY !== null && note.value.positionY !== undefined) {
         await appWindow.setPosition(new PhysicalPosition(note.value.positionX, note.value.positionY))
+        revealedPos = { x: note.value.positionX, y: note.value.positionY }
       }
       console.log('Window geometry restored:', { 
         width: note.value.width, 
@@ -609,7 +832,8 @@ async function handleClose() {
 async function togglePin() {
   isPinned.value = !isPinned.value
   try {
-    await appWindow.setAlwaysOnTop(isPinned.value)
+    // 吸附到边缘时始终保持置顶，确保窄条可见
+    await appWindow.setAlwaysOnTop(isPinned.value || !!snappedEdge.value)
   } catch (e) {
     console.error('setAlwaysOnTop failed:', e)
     isPinned.value = !isPinned.value
@@ -628,9 +852,18 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
       class="editor-window"
       :class="{ 'is-glass': isGlass }"
       :style="isGlass ? undefined : { background: noteBg, color: noteTextColor }"
+      @mouseenter="handleWindowMouseEnter"
+      @mouseleave="handleWindowMouseLeave"
     >
+      <!-- 收起后露出的实色把手条，便于看见与唤回 -->
+      <div
+        v-if="isHidden && snappedEdge"
+        class="edge-handle"
+        :class="`edge-${snappedEdge}`"
+      />
+
       <!-- Title Bar / Drag Region -->
-      <div class="titlebar" data-tauri-drag-region>
+      <div class="titlebar" data-tauri-drag-region @mousedown="handleDragStart">
         <!-- Color Dots (visible on focus) -->
         <div class="color-dots" :class="{ 'color-dots-visible': isFocused }">
           <button
@@ -741,6 +974,38 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   background: rgb(24 24 28 / 0.55);
   border-color: rgb(255 255 255 / 0.12);
   color: #e5e7eb;
+}
+
+/* 收起后露出的实色把手条（不透明，保证可见且可 hover 唤回） */
+.edge-handle {
+  position: absolute;
+  background: #D97706;
+  z-index: 60;
+  pointer-events: none;
+}
+
+/* 吸附右边：窗口右移，露出窗口左边 */
+.edge-handle.edge-right {
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 100%;
+}
+
+/* 吸附左边：窗口左移，露出窗口右边 */
+.edge-handle.edge-left {
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+}
+
+/* 吸附顶边：窗口上移，露出窗口底边 */
+.edge-handle.edge-top {
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 8px;
 }
 
 .titlebar {
