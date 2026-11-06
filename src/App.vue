@@ -184,7 +184,7 @@ async function handleClose() {
         </div>
 
         <!-- Action Buttons (outside drag region) -->
-        <div class="flex items-center gap-0.5" style="-webkit-app-region: no-drag; pointer-events: auto;">
+        <div class="flex items-center gap-2" style="-webkit-app-region: no-drag; pointer-events: auto;">
           <n-button quaternary circle size="tiny" @click="cycleTheme" :title="themeTitle" style="pointer-events: auto;">
             <i :class="themeIcon" class="w-4 h-4" />
           </n-button>

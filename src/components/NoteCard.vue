@@ -88,7 +88,7 @@ const timeAgo = computed(() => formatTime(props.note.updatedAt))
           class="opacity-100!"
           @click.stop="emit('pin', note)"
         >
-          <i :class="note.isPinned ? 'i-lucide-pin text-primary!' : 'i-lucide-pin-off'" class="w-5 h-5" />
+          <i :class="note.isPinned ? 'i-lucide-pin text-primary!' : 'i-lucide-pin-off'" class="w-4 h-4" />
         </n-button>
         <n-popconfirm
           positive-text="确定"
@@ -103,7 +103,7 @@ const timeAgo = computed(() => formatTime(props.note.updatedAt))
               class="opacity-100!"
               @click.stop
             >
-              <i class="i-lucide-trash-2 w-5 h-5" />
+              <i class="i-lucide-trash-2 w-4 h-4" />
             </n-button>
           </template>
           确定删除这条便签吗？

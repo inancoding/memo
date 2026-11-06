@@ -1,6 +1,6 @@
 [package]
 name = "memo"
-version = "0.8.6"
+version = "0.8.7"
 description = "A lightweight desktop sticky note application"
 authors = ["you"]
 edition = "2021"

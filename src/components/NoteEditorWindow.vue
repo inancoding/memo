@@ -1050,7 +1050,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 .close-btn-container {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 10px;
   margin-left: auto;
   opacity: 1;
   pointer-events: auto;

@@ -72,10 +72,7 @@ const edgeHide = computed({
             <n-switch :value="launchAtStartup" @update:value="handleAutostartChange" />
           </div>
           <div class="flex items-center justify-between">
-            <div class="flex flex-col">
-              <span class="text-sm">边缘自动隐藏</span>
-              <span class="text-xs text-muted-fg">便签贴屏幕边缘时收起为窄条</span>
-            </div>
+            <span class="text-sm">边缘自动隐藏</span>
             <n-switch v-model:value="edgeHide" />
           </div>
           <div class="flex items-center justify-between">
