@@ -48,28 +48,7 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: |
-          set +e
-          npm run tauri build -- --bundles deb,rpm 2>&1 | tee /tmp/build.log
-          CODE=${PIPESTATUS[0]}
-          if [ "$CODE" -ne 0 ]; then
-            TAIL=$(tail -n 60 /tmp/build.log | sed -e 's/%/%25/g' -e ':a' -e 'N' -e '$!ba' -e 's/\n/%0A/g')
-            echo "::error title=tauri_build_failed::$TAIL"
-          fi
-          exit "$CODE"
-
-      - name: Show bundle output
-        if: always()
-        run: |
-          set +e
-          echo "== full listing of src-tauri/target/release/bundle =="
-          ls -laR src-tauri/target/release/bundle || echo "NO BUNDLE DIR"
-          BUNDLE_DIRS=$(find src-tauri/target -type d -name bundle 2>/dev/null | tr '\n' ' ')
-          PKGS=$(find src-tauri/target -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) 2>/dev/null | tr '\n' ' ')
-          TARGET_DIRS=$(find src-tauri/target -maxdepth 2 -type d -name release 2>/dev/null | tr '\n' ' ')
-          echo "::warning title=bundle_dirs::${BUNDLE_DIRS:-NONE}"
-          echo "::warning title=linux_packages::${PKGS:-NONE}"
-          echo "::warning title=release_dirs::${TARGET_DIRS:-NONE}"
+        run: npm run tauri build -- --bundles deb,rpm
 
       - name: Upload deb artifact
         uses: actions/upload-artifact@v4
