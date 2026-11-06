@@ -48,7 +48,7 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run tauri build
+        run: npm run tauri build -- --bundles deb,rpm
 
       - name: Show bundle output
         if: always()
