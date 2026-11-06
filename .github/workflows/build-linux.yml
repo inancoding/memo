@@ -53,8 +53,15 @@ jobs:
       - name: Show bundle output
         if: always()
         run: |
-          echo "== src-tauri/target/release/bundle =="
+          set +e
+          echo "== full listing of src-tauri/target/release/bundle =="
           ls -laR src-tauri/target/release/bundle || echo "NO BUNDLE DIR"
+          BUNDLE_DIRS=$(find src-tauri/target -type d -name bundle 2>/dev/null | tr '\n' ' ')
+          PKGS=$(find src-tauri/target -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) 2>/dev/null | tr '\n' ' ')
+          TARGET_DIRS=$(find src-tauri/target -maxdepth 2 -type d -name release 2>/dev/null | tr '\n' ' ')
+          echo "::warning title=bundle_dirs::${BUNDLE_DIRS:-NONE}"
+          echo "::warning title=linux_packages::${PKGS:-NONE}"
+          echo "::warning title=release_dirs::${TARGET_DIRS:-NONE}"
 
       - name: Upload deb artifact
         uses: actions/upload-artifact@v4
