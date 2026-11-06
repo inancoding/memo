@@ -12,13 +12,21 @@ import NoteList from './components/NoteList.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import type { Note } from './types'
 
-const { isDark, toggleTheme } = useTheme()
+const { isDark, mode, cycleTheme } = useTheme()
 const noteStore = useNoteStore()
 
 const showSettings = ref(false)
 const appWindow = getCurrentWindow()
 
 const noteCount = computed(() => noteStore.notes.filter(n => n.deletedAt === null).length)
+
+// 标题栏主题按钮与「设置 - 主题模式」联动：系统 → 浅色 → 深色 循环
+const MODE_LABELS: Record<string, string> = { light: '浅色', dark: '深色', system: '系统' }
+const themeTitle = computed(() => `主题模式：${MODE_LABELS[mode.value]}（点击切换）`)
+const themeIcon = computed(() => {
+  if (mode.value === 'system') return 'i-lucide-monitor'
+  return mode.value === 'dark' ? 'i-lucide-moon' : 'i-lucide-sun'
+})
 
 // 置顶便签排到最前，其余保持数据库返回顺序（updated_at DESC）
 const visibleNotes = computed(() => {
@@ -177,8 +185,8 @@ async function handleClose() {
 
         <!-- Action Buttons (outside drag region) -->
         <div class="flex items-center gap-0.5" style="-webkit-app-region: no-drag; pointer-events: auto;">
-          <n-button quaternary circle size="tiny" @click="toggleTheme" :title="isDark ? '亮色模式' : '暗色模式'" style="pointer-events: auto;">
-            <i :class="isDark ? 'i-lucide-moon' : 'i-lucide-sun'" class="w-4 h-4" />
+          <n-button quaternary circle size="tiny" @click="cycleTheme" :title="themeTitle" style="pointer-events: auto;">
+            <i :class="themeIcon" class="w-4 h-4" />
           </n-button>
           <n-button quaternary circle size="tiny" @click="showSettings = true" title="设置" style="pointer-events: auto;">
             <i class="i-lucide-settings w-4 h-4" />

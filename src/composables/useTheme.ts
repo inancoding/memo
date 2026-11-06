@@ -1,6 +1,10 @@
 import { ref, watch } from 'vue'
 import { emit, listen } from '@tauri-apps/api/event'
 
+export type ThemeMode = 'light' | 'dark' | 'system'
+
+// 主题模式是唯一真源，isDark 由它解析而来（system 跟随系统）
+const mode = ref<ThemeMode>('system')
 const isDark = ref(false)
 let syncInitialized = false
 
@@ -8,16 +12,13 @@ function getSystemDark(): boolean {
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
-function getMode(): string | null {
-  return localStorage.getItem('memo-theme')
+function readMode(): ThemeMode {
+  const saved = localStorage.getItem('memo-theme')
+  return saved === 'light' || saved === 'dark' ? saved : 'system'
 }
 
-// 依据存储的模式解析出当前是否深色；system（或未设置）跟随系统
-function resolveDark(): boolean {
-  const mode = getMode()
-  if (mode === 'dark') return true
-  if (mode === 'light') return false
-  return getSystemDark()
+function resolveDark(m: ThemeMode): boolean {
+  return m === 'system' ? getSystemDark() : m === 'dark'
 }
 
 function applyTheme(): void {
@@ -42,8 +43,7 @@ function initSync(): void {
   })
 
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    const mode = getMode()
-    if (mode === 'system' || !mode) {
+    if (mode.value === 'system') {
       isDark.value = e.matches
       applyTheme()
       broadcast()
@@ -52,33 +52,36 @@ function initSync(): void {
 }
 
 export function useTheme() {
-  isDark.value = resolveDark()
+  mode.value = readMode()
+  isDark.value = resolveDark(mode.value)
   applyTheme()
   initSync()
 
-  // 仅同步 DOM class。不要把解析后的 isDark 写回 memo-theme，
-  // 否则 system 模式会被覆盖成 dark/light，导致系统切回浅色时不再跟随。
+  // 只同步 DOM class；模式本身仅在 setTheme 中写入，
+  // 否则 system 会被覆盖成 dark/light，系统切回浅色时就不再跟随。
   watch(isDark, () => {
     applyTheme()
   })
 
-  function toggleTheme() {
-    isDark.value = !isDark.value
-    localStorage.setItem('memo-theme', isDark.value ? 'dark' : 'light')
+  function setTheme(next: ThemeMode) {
+    mode.value = next
+    localStorage.setItem('memo-theme', next)
+    isDark.value = resolveDark(next)
     applyTheme()
     broadcast()
   }
 
-  function setTheme(mode: 'light' | 'dark' | 'system') {
-    localStorage.setItem('memo-theme', mode)
-    isDark.value = mode === 'system' ? getSystemDark() : mode === 'dark'
-    applyTheme()
-    broadcast()
+  // 标题栏按钮：系统 → 浅色 → 深色 → 系统 循环切换
+  function cycleTheme() {
+    const order: ThemeMode[] = ['system', 'light', 'dark']
+    const next = order[(order.indexOf(mode.value) + 1) % order.length]
+    setTheme(next)
   }
 
   return {
     isDark,
-    toggleTheme,
+    mode,
+    cycleTheme,
     setTheme,
   }
 }

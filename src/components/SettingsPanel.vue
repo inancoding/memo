@@ -4,11 +4,12 @@ import { getVersion } from '@tauri-apps/api/app'
 import { invoke } from '@tauri-apps/api/core'
 import { useSettingsStore } from '@/stores/settings'
 import { useTheme } from '@/composables/useTheme'
+import type { ThemeMode } from '@/composables/useTheme'
 
 const emit = defineEmits<{ close: [] }>()
 
 const settings = useSettingsStore()
-const { setTheme } = useTheme()
+const { mode, setTheme } = useTheme()
 
 const activeTab = ref<'general' | 'about'>('general')
 const appVersion = ref('')
@@ -41,11 +42,8 @@ async function handleAutostartChange(v: boolean) {
 }
 
 const themeMode = computed({
-  get: () => settings.settings.themeMode,
-  set: (v: 'light' | 'dark' | 'system') => {
-    settings.updateSettings({ themeMode: v })
-    setTheme(v)
-  },
+  get: () => mode.value,
+  set: (v: ThemeMode) => setTheme(v),
 })
 
 const edgeHide = computed({
@@ -91,8 +89,8 @@ const edgeHide = computed({
           <div class="flex items-center justify-between">
             <span class="text-sm">主题模式</span>
             <n-radio-group v-model:value="themeMode" name="themeMode" size="small">
-              <n-radio-button value="light" label="亮色" />
-              <n-radio-button value="dark" label="暗色" />
+              <n-radio-button value="light" label="浅色" />
+              <n-radio-button value="dark" label="深色" />
               <n-radio-button value="system" label="系统" />
             </n-radio-group>
           </div>
