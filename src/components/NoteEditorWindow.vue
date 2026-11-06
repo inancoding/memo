@@ -447,53 +447,54 @@ function handleInput() {
   }, 600)
 }
 
-// 保存光标在编辑器内的字符偏移
-function getCaretOffset(root: HTMLElement): number {
+// 光标标记：字符偏移无法区分「上一行末尾」与「下一行开头」，
+// 列表回车后按偏移还原会把光标弹回上一行末尾，改用零宽字符占位。
+const CARET_MARKER = '\uFEFF'
+
+function markCaret(root: HTMLElement): boolean {
+  if (document.activeElement !== root) return false
   const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) return -1
+  if (!sel || sel.rangeCount === 0) return false
   const range = sel.getRangeAt(0)
-  if (!root.contains(range.startContainer)) return -1
-  const pre = document.createRange()
-  pre.selectNodeContents(root)
-  pre.setEnd(range.startContainer, range.startOffset)
-  return pre.toString().length
+  if (!root.contains(range.startContainer)) return false
+  const el =
+    range.startContainer instanceof Element
+      ? range.startContainer
+      : range.startContainer.parentElement
+  if (el?.closest('[contenteditable="false"]')) return false
+  range.insertNode(document.createTextNode(CARET_MARKER))
+  return true
 }
 
-// 按字符偏移恢复光标
-function setCaretOffset(root: HTMLElement, offset: number) {
-  if (offset < 0) return
-  const sel = window.getSelection()
-  if (!sel) return
-  const range = document.createRange()
-  let remaining = offset
-  let found = false
+function restoreCaret(root: HTMLElement) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  let node: Node | null
-  while ((node = walker.nextNode())) {
-    const len = node.nodeValue?.length || 0
-    if (remaining <= len) {
-      range.setStart(node, remaining)
-      range.collapse(true)
-      found = true
-      break
+  let node = walker.nextNode() as Text | null
+  while (node) {
+    const idx = node.data.indexOf(CARET_MARKER)
+    if (idx >= 0) {
+      node.deleteData(idx, CARET_MARKER.length)
+      const sel = window.getSelection()
+      if (sel) {
+        const range = document.createRange()
+        range.setStart(node, idx)
+        range.collapse(true)
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+      return
     }
-    remaining -= len
-  }
-  if (found) {
-    sel.removeAllRanges()
-    sel.addRange(range)
+    node = walker.nextNode() as Text | null
   }
 }
 
-// 重新检测链接：先移除旧高亮再重新应用，保持光标位置
+// 重新检测链接：先移除旧高亮再重新应用，光标位置靠标记还原
 function refreshAutoLinks() {
   const root = editorRef.value
   if (!root) return
-  const hadFocus = document.activeElement === root
-  const offset = hadFocus ? getCaretOffset(root) : -1
+  const marked = markCaret(root)
   removeAutoLinks()
   applyAutoLinks()
-  if (hadFocus && offset >= 0) setCaretOffset(root, offset)
+  if (marked) restoreCaret(root)
 }
 
 function saveContent() {
