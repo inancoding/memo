@@ -201,6 +201,13 @@ pub fn run() {
                 let _ = fs::write(&welcome_marker, "1");
             }
 
+            // 每次启动都把"未被用户改写"的旧欢迎便签刷新为最新内容（例如新增了功能说明）
+            if let Some(db) = app_handle.try_state::<db::Database>() {
+                if let Err(e) = db.refresh_welcome_note() {
+                    println!("refresh welcome note failed: {}", e);
+                }
+            }
+
             tray::setup_tray(&app_handle)?;
 
             // 全局快捷键

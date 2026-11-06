@@ -8,15 +8,16 @@ function getSystemDark(): boolean {
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
-function loadTheme(): void {
-  const saved = localStorage.getItem('memo-theme')
-  if (saved === 'dark') {
-    isDark.value = true
-  } else if (saved === 'light') {
-    isDark.value = false
-  } else {
-    isDark.value = getSystemDark()
-  }
+function getMode(): string | null {
+  return localStorage.getItem('memo-theme')
+}
+
+// 依据存储的模式解析出当前是否深色；system（或未设置）跟随系统
+function resolveDark(): boolean {
+  const mode = getMode()
+  if (mode === 'dark') return true
+  if (mode === 'light') return false
+  return getSystemDark()
 }
 
 function applyTheme(): void {
@@ -41,7 +42,7 @@ function initSync(): void {
   })
 
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    const mode = localStorage.getItem('memo-theme')
+    const mode = getMode()
     if (mode === 'system' || !mode) {
       isDark.value = e.matches
       applyTheme()
@@ -51,28 +52,27 @@ function initSync(): void {
 }
 
 export function useTheme() {
-  loadTheme()
+  isDark.value = resolveDark()
   applyTheme()
   initSync()
 
+  // 仅同步 DOM class。不要把解析后的 isDark 写回 memo-theme，
+  // 否则 system 模式会被覆盖成 dark/light，导致系统切回浅色时不再跟随。
   watch(isDark, () => {
-    localStorage.setItem('memo-theme', isDark.value ? 'dark' : 'light')
     applyTheme()
   })
 
   function toggleTheme() {
     isDark.value = !isDark.value
+    localStorage.setItem('memo-theme', isDark.value ? 'dark' : 'light')
+    applyTheme()
     broadcast()
   }
 
   function setTheme(mode: 'light' | 'dark' | 'system') {
-    if (mode === 'system') {
-      isDark.value = getSystemDark()
-      localStorage.setItem('memo-theme', 'system')
-    } else {
-      isDark.value = mode === 'dark'
-      localStorage.setItem('memo-theme', mode)
-    }
+    localStorage.setItem('memo-theme', mode)
+    isDark.value = mode === 'system' ? getSystemDark() : mode === 'dark'
+    applyTheme()
     broadcast()
   }
 
