@@ -143,8 +143,6 @@ fn set_editor_visible(app_handle: tauri::AppHandle, visible: bool) -> Result<(),
 
 #[tauri::command]
 fn open_editor(app_handle: tauri::AppHandle, note_id: String) -> Result<(), String> {
-    println!("open_editor called with note_id: {}", note_id);
-
     if app_handle.get_webview_window("editor").is_none() {
         return Err("Editor window not found".to_string());
     }
