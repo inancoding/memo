@@ -41,13 +41,20 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
-            pkg-config
+            pkg-config \
+            rpm
 
       - name: Install frontend dependencies
         run: npm ci
 
       - name: Build
         run: npm run tauri build
+
+      - name: Show bundle output
+        if: always()
+        run: |
+          echo "== src-tauri/target/release/bundle =="
+          ls -laR src-tauri/target/release/bundle || echo "NO BUNDLE DIR"
 
       - name: Upload deb artifact
         uses: actions/upload-artifact@v4
