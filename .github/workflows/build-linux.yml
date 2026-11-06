@@ -48,7 +48,15 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run tauri build -- --bundles deb,rpm
+        run: |
+          set +e
+          npm run tauri build -- --bundles deb,rpm 2>&1 | tee /tmp/build.log
+          CODE=${PIPESTATUS[0]}
+          if [ "$CODE" -ne 0 ]; then
+            TAIL=$(tail -n 60 /tmp/build.log | sed -e 's/%/%25/g' -e ':a' -e 'N' -e '$!ba' -e 's/\n/%0A/g')
+            echo "::error title=tauri_build_failed::$TAIL"
+          fi
+          exit "$CODE"
 
       - name: Show bundle output
         if: always()
