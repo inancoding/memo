@@ -36,8 +36,11 @@ const visibleNotes = computed(() => {
 
 let unlistenNotesChanged: UnlistenFn | null = null
 
+const loading = ref(true)
+
 onMounted(async () => {
-  noteStore.loadNotes()
+  await noteStore.loadNotes()
+  loading.value = false
   // 全局快捷键在后端新建便签后刷新列表
   unlistenNotesChanged = await listen('notes-changed', () => {
     noteStore.loadNotes()
@@ -199,17 +202,22 @@ async function handleClose() {
 
       <!-- Main Content -->
       <main class="flex-1 px-4 py-4 w-full overflow-y-auto">
-        <div class="flex items-center gap-2 mb-4">
-          <h1 class="text-base font-bold">全部便签</h1>
-          <n-tag round size="small" :bordered="false" type="warning">{{ noteCount }}</n-tag>
+        <div v-if="loading" class="h-full flex items-center justify-center">
+          <n-spin size="large" />
         </div>
+        <template v-else>
+          <div class="flex items-center gap-2 mb-4">
+            <h1 class="text-base font-bold">全部便签</h1>
+            <n-tag round size="small" :bordered="false" type="warning">{{ noteCount }}</n-tag>
+          </div>
 
-        <NoteList
-          :notes="visibleNotes"
-          @click-note="handleClickNote"
-          @pin-note="handlePinNote"
-          @delete-note="handleDeleteNote"
-        />
+          <NoteList
+            :notes="visibleNotes"
+            @click-note="handleClickNote"
+            @pin-note="handlePinNote"
+            @delete-note="handleDeleteNote"
+          />
+        </template>
       </main>
 
       <!-- FAB -->

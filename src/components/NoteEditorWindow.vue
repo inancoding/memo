@@ -868,6 +868,11 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
       @mouseenter="handleWindowMouseEnter"
       @mouseleave="handleWindowMouseLeave"
     >
+      <!-- 便签内容加载中的转圈动画 -->
+      <div v-if="!note" class="absolute inset-0 z-50 flex items-center justify-center">
+        <n-spin size="medium" />
+      </div>
+
       <!-- 收起后露出的实色把手条，便于看见与唤回 -->
       <div
         v-if="isHidden && snappedEdge"
