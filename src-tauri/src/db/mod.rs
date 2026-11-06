@@ -55,7 +55,8 @@ impl Database {
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 deleted_at TEXT
-            );"
+            );
+            UPDATE notes SET color = 'silver' WHERE color = 'white';"
         )?;
         Ok(Database { conn: Mutex::new(conn) })
     }

@@ -5,7 +5,7 @@ import type { GlobalThemeOverrides } from 'naive-ui'
 import { getCurrentWindow, currentMonitor, PhysicalSize, PhysicalPosition } from '@tauri-apps/api/window'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
+import { emit, listen } from '@tauri-apps/api/event'
 import { useTheme } from '@/composables/useTheme'
 import type { Note, NoteColor } from '@/types'
 import { NOTE_COLORS } from '@/types'
@@ -389,6 +389,9 @@ async function loadNote() {
         await appWindow.setPosition(new PhysicalPosition(note.value.positionX, note.value.positionY))
         revealedPos = { x: note.value.positionX, y: note.value.positionY }
       }
+      // 恢复置顶状态，与主窗口列表保持一致
+      isPinned.value = note.value.isPinned
+      await appWindow.setAlwaysOnTop(isPinned.value)
       console.log('Window geometry restored:', { 
         width: note.value.width, 
         height: note.value.height, 
@@ -503,7 +506,9 @@ function saveContent() {
   })
   clone.normalize()
   const content = clone.innerHTML
-  invoke('update_note', { request: { id: note.value.id, content } }).catch(console.error)
+  invoke('update_note', { request: { id: note.value.id, content } })
+    .then(() => emit('notes-changed'))
+    .catch(console.error)
 }
 
 // ===== 自动识别网址 / 邮箱 / 手机号并高亮 =====
@@ -820,7 +825,9 @@ function handleResizeEnd() {
 function changeColor(color: NoteColor) {
   if (!note.value) return
   note.value.color = color
-  invoke('update_note', { request: { id: note.value.id, color } }).catch(console.error)
+  invoke('update_note', { request: { id: note.value.id, color } })
+    .then(() => emit('notes-changed'))
+    .catch(console.error)
 }
 
 async function handleClose() {
@@ -830,14 +837,19 @@ async function handleClose() {
 }
 
 async function togglePin() {
-  isPinned.value = !isPinned.value
+  const next = !isPinned.value
   try {
     // 吸附到边缘时始终保持置顶，确保窄条可见
-    await appWindow.setAlwaysOnTop(isPinned.value || !!snappedEdge.value)
+    await appWindow.setAlwaysOnTop(next || !!snappedEdge.value)
   } catch (e) {
     console.error('setAlwaysOnTop failed:', e)
-    isPinned.value = !isPinned.value
+    return
   }
+  isPinned.value = next
+  if (!note.value) return
+  invoke('update_note', { request: { id: note.value.id, isPinned: next } })
+    .then(() => emit('notes-changed'))
+    .catch(console.error)
 }
 
 const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLORS[NoteColor]][]
@@ -869,7 +881,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
           <button
             v-for="[key, val] in colorEntries"
             :key="key"
-            class="w-4 h-4 rounded-full border-none cursor-pointer transition-all hover:scale-115"
+            class="w-3.5 h-3.5 rounded-full border-none cursor-pointer transition-all hover:scale-115"
             :class="{ 'ring-2 ring-primary ring-offset-1': note?.color === key }"
             :style="key === 'glass'
               ? { background: 'rgb(255 255 255 / 0.35)', backdropFilter: 'blur(4px)', border: '1px solid rgb(255 255 255 / 0.85)', boxShadow: '0 0 0 1px rgba(0,0,0,0.1)' }
@@ -1020,7 +1032,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 
 .color-dots {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   opacity: 0;
   transform: translateY(-100%);
