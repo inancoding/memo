@@ -418,6 +418,13 @@ const noteTextColor = computed(() => {
   return isDark.value ? c.darkText : c.text
 })
 
+const panelBg = computed(() => {
+  if (isGlass.value) {
+    return isDark.value ? 'rgb(24 24 28 / 0.55)' : 'rgb(255 255 255 / 0.55)'
+  }
+  return noteBg.value
+})
+
 const themeOverrides: GlobalThemeOverrides = {
   common: {
     primaryColor: '#D97706',
@@ -881,7 +888,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
       />
 
       <!-- Title Bar / Drag Region -->
-      <div class="titlebar" data-tauri-drag-region @mousedown="handleDragStart">
+      <div class="titlebar" data-tauri-drag-region @mousedown="handleDragStart" :style="{ background: panelBg }">
         <!-- Color Dots (visible on focus) -->
         <div class="color-dots" :class="{ 'color-dots-visible': isFocused }">
           <button
@@ -935,7 +942,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
       />
 
       <!-- Formatting Toolbar (visible on focus) -->
-      <div class="toolbar" :class="{ 'toolbar-visible': isFocused }">
+      <div class="toolbar" :class="{ 'toolbar-visible': isFocused }" :style="{ background: panelBg }">
         <n-button text size="small" title="加粗" @mousedown.prevent="execCmd('bold')">
           <i class="i-lucide-bold w-5 h-5" />
         </n-button>
@@ -980,7 +987,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 
 /* 毛玻璃主题（颜色栏第一项） */
 .editor-window.is-glass {
-  background: rgb(255 255 255 / 0.75);
+  background: rgb(255 255 255 / 0.55);
   backdrop-filter: blur(32px);
   -webkit-backdrop-filter: blur(32px);
   border: 1px solid rgb(255 255 255 / 0.7);
@@ -988,7 +995,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 }
 
 .dark .editor-window.is-glass {
-  background: rgb(24 24 28 / 0.75);
+  background: rgb(24 24 28 / 0.55);
   border-color: rgb(255 255 255 / 0.12);
   color: #e5e7eb;
 }

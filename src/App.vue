@@ -18,6 +18,10 @@ const noteStore = useNoteStore()
 const showSettings = ref(false)
 const appWindow = getCurrentWindow()
 
+async function startDragging() {
+  await appWindow.startDragging()
+}
+
 const noteCount = computed(() => noteStore.notes.filter(n => n.deletedAt === null).length)
 
 // 标题栏主题按钮与「设置 - 主题模式」联动：系统 → 浅色 → 深色 循环
@@ -179,7 +183,7 @@ async function handleClose() {
   >
     <div class="h-screen flex flex-col bg-background text-foreground font-ui dark:bg-[#1C1917] dark:text-[#E7E0CC]">
       <!-- Title Bar -->
-      <header class="titlebar h-10 flex items-center px-3 gap-2 bg-surface border-b border-border flex-shrink-0 select-none dark:bg-[#292524] dark:border-[#44403C]">
+      <header class="titlebar h-10 flex items-center px-3 gap-2 bg-surface border-b border-border flex-shrink-0 select-none dark:bg-[#292524] dark:border-[#44403C]" data-tauri-drag-region @mousedown="startDragging">
         <!-- Drag Region: Logo + Title -->
         <div class="flex items-center gap-2 flex-1 drag-region">
           <img src="/src/assets/logo.png" class="w-5 h-5 rounded-md pointer-events-none" alt="Memo" />
