@@ -976,12 +976,11 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   flex-direction: column;
   overflow: hidden;
   border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 }
 
 /* 毛玻璃主题（颜色栏第一项） */
 .editor-window.is-glass {
-  background: rgb(255 255 255 / 0.55);
+  background: rgb(255 255 255 / 0.75);
   backdrop-filter: blur(32px);
   -webkit-backdrop-filter: blur(32px);
   border: 1px solid rgb(255 255 255 / 0.7);
@@ -989,7 +988,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 }
 
 .dark .editor-window.is-glass {
-  background: rgb(24 24 28 / 0.55);
+  background: rgb(24 24 28 / 0.75);
   border-color: rgb(255 255 255 / 0.12);
   color: #e5e7eb;
 }
@@ -1046,6 +1045,16 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   pointer-events: none;
 }
 
+.editor-window.is-glass .color-dots {
+  background: rgb(255 255 255 / 0.75);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+}
+
+.dark .editor-window.is-glass .color-dots {
+  background: rgb(24 24 28 / 0.75);
+}
+
 .color-dots-visible {
   opacity: 1;
   transform: translateY(0);
@@ -1059,6 +1068,19 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   margin-left: auto;
   opacity: 1;
   pointer-events: auto;
+}
+
+.close-btn-container .n-button {
+  background: transparent !important;
+  transition: none !important;
+}
+
+.close-btn-container .n-button:hover {
+  background: rgba(0, 0, 0, 0.08) !important;
+}
+
+.dark .close-btn-container .n-button:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
 }
 
 .no-drag,
@@ -1272,14 +1294,18 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   transform: translateY(100%);
   transition: opacity 0.2s ease, transform 0.2s ease;
   pointer-events: none;
-  background: inherit;
-  backdrop-filter: inherit;
-  -webkit-backdrop-filter: inherit;
   border-top: 1px solid rgba(0, 0, 0, 0.1);
   z-index: 10;
 }
 
-.dark .toolbar {
+.editor-window.is-glass .toolbar {
+  background: rgb(255 255 255 / 0.75);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+}
+
+.dark .editor-window.is-glass .toolbar {
+  background: rgb(24 24 28 / 0.75);
   border-top-color: rgb(255 255 255 / 0.1);
 }
 

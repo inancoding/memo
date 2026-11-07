@@ -243,6 +243,10 @@ async function handleClose() {
 </template>
 
 <style>
+.titlebar {
+  -webkit-app-region: drag;
+}
+
 .drag-region {
   -webkit-app-region: drag;
 }
