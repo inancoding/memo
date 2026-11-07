@@ -19,6 +19,13 @@ try {
 
 console.log('main.ts loaded, isEditor:', isEditor)
 
+// 生产模式下屏蔽右键菜单
+if (!import.meta.env.DEV) {
+  document.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+  })
+}
+
 const app = createApp(isEditor ? NoteEditorWindow : App)
 app.use(createPinia())
 app.mount('#app')

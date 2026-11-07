@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { darkTheme } from 'naive-ui'
 import type { GlobalThemeOverrides } from 'naive-ui'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getCurrentWindow, PhysicalPosition } from '@tauri-apps/api/window'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { UnlistenFn } from '@tauri-apps/api/event'
@@ -18,8 +18,44 @@ const noteStore = useNoteStore()
 const showSettings = ref(false)
 const appWindow = getCurrentWindow()
 
-async function startDragging() {
-  await appWindow.startDragging()
+// 自定义拖动实现，避免原生标题栏行为（右键菜单、双击最大化）
+let isDragging = false
+let dragStartX = 0
+let dragStartY = 0
+let windowStartX = 0
+let windowStartY = 0
+
+async function startDragging(e: MouseEvent) {
+  // 如果点击的是按钮或其子元素，不启动拖动
+  const target = e.target as HTMLElement
+  if (target.closest('button') || target.closest('.n-button')) {
+    return
+  }
+  // 只响应左键
+  if (e.button !== 0) return
+  
+  isDragging = true
+  dragStartX = e.screenX
+  dragStartY = e.screenY
+  const pos = await appWindow.outerPosition()
+  windowStartX = pos.x
+  windowStartY = pos.y
+  
+  document.addEventListener('mousemove', onDragMove)
+  document.addEventListener('mouseup', onDragEnd)
+}
+
+function onDragMove(e: MouseEvent) {
+  if (!isDragging) return
+  const dx = e.screenX - dragStartX
+  const dy = e.screenY - dragStartY
+  appWindow.setPosition(new PhysicalPosition(windowStartX + dx, windowStartY + dy))
+}
+
+function onDragEnd() {
+  isDragging = false
+  document.removeEventListener('mousemove', onDragMove)
+  document.removeEventListener('mouseup', onDragEnd)
 }
 
 const noteCount = computed(() => noteStore.notes.filter(n => n.deletedAt === null).length)
@@ -138,8 +174,11 @@ const darkThemeOverrides: GlobalThemeOverrides = {
 async function handleNewNote() {
   console.log('handleNewNote called')
   try {
-    await noteStore.createNote('glass')
-    console.log('Note created successfully')
+    const note = await noteStore.createNote('glass')
+    if (note) {
+      console.log('Note created successfully, opening editor')
+      await invoke('open_editor', { noteId: note.id })
+    }
   } catch (e) {
     console.error('Failed to create note:', e)
   }
@@ -183,7 +222,7 @@ async function handleClose() {
   >
     <div class="h-screen flex flex-col bg-background text-foreground font-ui dark:bg-[#1C1917] dark:text-[#E7E0CC]">
       <!-- Title Bar -->
-      <header class="titlebar h-10 flex items-center px-3 gap-2 bg-surface border-b border-border flex-shrink-0 select-none dark:bg-[#292524] dark:border-[#44403C]" data-tauri-drag-region @mousedown="startDragging">
+      <header class="titlebar h-10 flex items-center px-3 gap-2 bg-surface border-b border-border flex-shrink-0 select-none dark:bg-[#292524] dark:border-[#44403C]" @mousedown="startDragging">
         <!-- Drag Region: Logo + Title -->
         <div class="flex items-center gap-2 flex-1 drag-region">
           <img src="/src/assets/logo.png" class="w-5 h-5 rounded-md pointer-events-none" alt="Memo" />
@@ -247,19 +286,6 @@ async function handleClose() {
 </template>
 
 <style>
-.titlebar {
-  -webkit-app-region: drag;
-}
-
-.drag-region {
-  -webkit-app-region: drag;
-}
-
-.no-drag,
-.no-drag * {
-  -webkit-app-region: no-drag;
-}
-
 .close-btn {
   background-color: rgba(220, 38, 38, 0.15) !important;
 }

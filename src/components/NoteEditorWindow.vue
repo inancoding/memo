@@ -192,10 +192,47 @@ async function evaluateSnap() {
   }
 }
 
+// 自定义拖动实现，避免原生标题栏行为（右键菜单、双击最大化）
+let isDragging = false
+let dragStartX = 0
+let dragStartY = 0
+let windowStartX = 0
+let windowStartY = 0
+
 // 用户主动拖动标题栏时解除停靠抑制，使其可重新吸附或脱离边缘
-function handleDragStart() {
+async function handleDragStart(e: MouseEvent) {
+  // 只响应左键
+  if (e.button !== 0) return
+  // 如果点击的是按钮或其子元素，不启动拖动
+  const target = e.target as HTMLElement
+  if (target.closest('button') || target.closest('.n-button')) {
+    return
+  }
   suppressAutoHide = false
   cancelRehide()
+
+  isDragging = true
+  dragStartX = e.screenX
+  dragStartY = e.screenY
+  const pos = await appWindow.outerPosition()
+  windowStartX = pos.x
+  windowStartY = pos.y
+
+  document.addEventListener('mousemove', onDragMove)
+  document.addEventListener('mouseup', onDragEnd)
+}
+
+function onDragMove(e: MouseEvent) {
+  if (!isDragging) return
+  const dx = e.screenX - dragStartX
+  const dy = e.screenY - dragStartY
+  appWindow.setPosition(new PhysicalPosition(windowStartX + dx, windowStartY + dy))
+}
+
+function onDragEnd() {
+  isDragging = false
+  document.removeEventListener('mousemove', onDragMove)
+  document.removeEventListener('mouseup', onDragEnd)
 }
 
 function cancelRehide() {
@@ -416,13 +453,6 @@ const noteTextColor = computed(() => {
   if (!note.value) return '#123047'
   const c = NOTE_COLORS[note.value.color]
   return isDark.value ? c.darkText : c.text
-})
-
-const panelBg = computed(() => {
-  if (isGlass.value) {
-    return isDark.value ? 'rgb(24 24 28 / 0.55)' : 'rgb(255 255 255 / 0.55)'
-  }
-  return noteBg.value
 })
 
 const themeOverrides: GlobalThemeOverrides = {
@@ -888,7 +918,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
       />
 
       <!-- Title Bar / Drag Region -->
-      <div class="titlebar" data-tauri-drag-region @mousedown="handleDragStart" :style="{ background: panelBg }">
+      <div class="titlebar" @mousedown="handleDragStart">
         <!-- Color Dots (visible on focus) -->
         <div class="color-dots" :class="{ 'color-dots-visible': isFocused }">
           <button
@@ -942,7 +972,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
       />
 
       <!-- Formatting Toolbar (visible on focus) -->
-      <div class="toolbar" :class="{ 'toolbar-visible': isFocused }" :style="{ background: panelBg }">
+      <div class="toolbar" :class="{ 'toolbar-visible': isFocused }">
         <n-button text size="small" title="加粗" @mousedown.prevent="execCmd('bold')">
           <i class="i-lucide-bold w-5 h-5" />
         </n-button>
@@ -987,15 +1017,15 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 
 /* 毛玻璃主题（颜色栏第一项） */
 .editor-window.is-glass {
-  background: rgb(255 255 255 / 0.55);
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
-  border: 1px solid rgb(255 255 255 / 0.7);
+  background: rgb(255 255 255 / 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgb(255 255 255 / 0.5);
   color: #123047;
 }
 
 .dark .editor-window.is-glass {
-  background: rgb(24 24 28 / 0.55);
+  background: rgb(24 24 28 / 0.35);
   border-color: rgb(255 255 255 / 0.12);
   color: #e5e7eb;
 }
@@ -1039,7 +1069,6 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   padding: 0 10px;
   gap: 8px;
   flex-shrink: 0;
-  -webkit-app-region: drag;
 }
 
 .color-dots {
@@ -1050,16 +1079,6 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   transform: translateY(-100%);
   transition: opacity 0.2s ease, transform 0.2s ease;
   pointer-events: none;
-}
-
-.editor-window.is-glass .color-dots {
-  background: rgb(255 255 255 / 0.75);
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
-}
-
-.dark .editor-window.is-glass .color-dots {
-  background: rgb(24 24 28 / 0.75);
 }
 
 .color-dots-visible {
@@ -1113,7 +1132,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 
 .editor-content ul,
 .editor-content ol {
-  padding-left: 24px;
+  padding-left: 1em;
   margin: 0;
   list-style-position: outside;
 }
@@ -1143,6 +1162,10 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   background: transparent;
   border-radius: 2px;
   transition: background 0.2s ease;
+}
+
+.dark .editor-content::-webkit-scrollbar-thumb {
+  background: transparent;
 }
 
 .editor-content.editor-focused::-webkit-scrollbar-thumb {
@@ -1306,13 +1329,11 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
 }
 
 .editor-window.is-glass .toolbar {
-  background: rgb(255 255 255 / 0.75);
   backdrop-filter: blur(32px);
   -webkit-backdrop-filter: blur(32px);
 }
 
-.dark .editor-window.is-glass .toolbar {
-  background: rgb(24 24 28 / 0.75);
+.dark .toolbar {
   border-top-color: rgb(255 255 255 / 0.1);
 }
 
