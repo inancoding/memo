@@ -1013,6 +1013,8 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   flex-direction: column;
   overflow: hidden;
   border-radius: 10px;
+  /* 始终预留 1px 边框（默认透明），保证各配色切换时盒模型一致、内容不跳动 */
+  border: 1px solid transparent;
 }
 
 /* 毛玻璃主题（颜色栏第一项） */
@@ -1020,7 +1022,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   background: rgb(255 255 255 / 0.35);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgb(255 255 255 / 0.5);
+  border-color: rgb(255 255 255 / 0.5);
   color: #123047;
 }
 
