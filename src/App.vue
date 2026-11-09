@@ -220,7 +220,7 @@ async function handleClose() {
     :theme-overrides="isDark ? darkThemeOverrides : themeOverrides"
     class="h-screen"
   >
-    <div class="h-screen flex flex-col bg-background text-foreground font-ui dark:bg-[#1C1917] dark:text-[#E7E0CC]">
+    <div class="h-screen flex flex-col bg-background text-foreground font-ui dark:bg-[#1C1917] dark:text-[#E7E0CC]" style="border-radius: 10px; overflow: hidden;">
       <!-- Title Bar -->
       <header class="titlebar h-10 flex items-center px-3 gap-2 bg-surface border-b border-border flex-shrink-0 select-none dark:bg-[#292524] dark:border-[#44403C]" @mousedown="startDragging">
         <!-- Drag Region: Logo + Title -->
