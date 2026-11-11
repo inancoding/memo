@@ -10,6 +10,7 @@ import { useTheme } from './composables/useTheme'
 import { useNoteStore } from './stores/notes'
 import NoteList from './components/NoteList.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
+import WindowResizeHandles from './components/WindowResizeHandles.vue'
 import type { Note } from './types'
 
 const { isDark, mode, cycleTheme } = useTheme()
@@ -281,6 +282,7 @@ async function handleClose() {
 
       <!-- Settings Panel -->
       <SettingsPanel v-if="showSettings" @close="showSettings = false" />
+      <WindowResizeHandles />
     </div>
   </n-config-provider>
 </template>

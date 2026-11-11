@@ -7,6 +7,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { emit, listen } from '@tauri-apps/api/event'
 import { useTheme } from '@/composables/useTheme'
+import WindowResizeHandles from '@/components/WindowResizeHandles.vue'
 import type { Note, NoteColor } from '@/types'
 import { NOTE_COLORS } from '@/types'
 
@@ -910,11 +911,12 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
         <n-spin size="medium" />
       </div>
 
-      <!-- 收起后露出的实色把手条，便于看见与唤回 -->
+      <!-- 收起后露出的把手条，颜色跟随便签配色，便于看见与唤回 -->
       <div
         v-if="isHidden && snappedEdge"
         class="edge-handle"
         :class="`edge-${snappedEdge}`"
+        :style="{ background: noteBg }"
       />
 
       <!-- Title Bar / Drag Region -->
@@ -1001,6 +1003,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
         </n-button>
       </div>
     </div>
+    <WindowResizeHandles />
   </n-config-provider>
 </template>
 
@@ -1032,10 +1035,9 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   color: #e5e7eb;
 }
 
-/* 收起后露出的实色把手条（不透明，保证可见且可 hover 唤回） */
+/* 收起后露出的把手条（不透明，保证可见且可 hover 唤回；颜色由内联样式跟随便签配色） */
 .edge-handle {
   position: absolute;
-  background: #D97706;
   z-index: 60;
   pointer-events: none;
 }
