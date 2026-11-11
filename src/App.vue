@@ -59,7 +59,7 @@ function onDragEnd() {
   document.removeEventListener('mouseup', onDragEnd)
 }
 
-const noteCount = computed(() => noteStore.notes.filter(n => n.deletedAt === null).length)
+const noteCount = computed(() => noteStore.notes.length)
 
 // 标题栏主题按钮与「设置 - 主题模式」联动：系统 → 浅色 → 深色 循环
 const MODE_LABELS: Record<string, string> = { light: '浅色', dark: '深色', system: '系统' }
@@ -71,8 +71,7 @@ const themeIcon = computed(() => {
 
 // 置顶便签排到最前，其余保持数据库返回顺序（updated_at DESC）
 const visibleNotes = computed(() => {
-  const active = noteStore.notes.filter(n => n.deletedAt === null)
-  return [...active].sort((a, b) => Number(b.isPinned) - Number(a.isPinned))
+  return [...noteStore.notes].sort((a, b) => Number(b.isPinned) - Number(a.isPinned))
 })
 
 let unlistenNotesChanged: UnlistenFn | null = null

@@ -19,7 +19,6 @@ pub struct Note {
     pub is_hidden: bool,
     pub created_at: String,
     pub updated_at: String,
-    pub deleted_at: Option<String>,
 }
 
 impl From<NoteRow> for Note {
@@ -39,7 +38,6 @@ impl From<NoteRow> for Note {
             is_hidden: row.is_hidden,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            deleted_at: row.deleted_at,
         }
     }
 }
@@ -109,19 +107,12 @@ pub fn update_note(
 }
 
 #[tauri::command]
-pub fn delete_note(db: State<Database>, id: String) -> Result<(), String> {
+pub fn delete_note(
+    app_handle: tauri::AppHandle,
+    db: State<Database>,
+    id: String,
+) -> Result<(), String> {
     db.delete_note(&id).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn restore_note(db: State<Database>, id: String) -> Result<(), String> {
-    db.restore_note(&id).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn empty_trash(db: State<Database>) -> Result<(), String> {
-    db.empty_trash().map_err(|e| e.to_string())?;
+    crate::forget_desktop_note(&app_handle, &id);
     Ok(())
 }

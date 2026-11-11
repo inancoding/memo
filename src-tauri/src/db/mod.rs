@@ -21,7 +21,6 @@ pub struct NoteRow {
     pub is_hidden: bool,
     pub created_at: String,
     pub updated_at: String,
-    pub deleted_at: Option<String>,
 }
 
 pub struct Database {
@@ -87,7 +86,6 @@ impl Database {
             is_hidden: false,
             created_at: now.clone(),
             updated_at: now,
-            deleted_at: None,
         })
     }
 
@@ -103,11 +101,11 @@ impl Database {
     }
 
     // 把内容仍与上一版欢迎便签完全一致（即用户未改写）的便签原地刷新为最新内容。
-    // 精确匹配旧内容可避免覆盖用户自行编辑过的便签；已删除的便签不会被恢复。
+    // 精确匹配旧内容可避免覆盖用户自行编辑过的便签。
     pub fn refresh_welcome_note(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE notes SET content = ?1 WHERE deleted_at IS NULL AND content = ?2",
+            "UPDATE notes SET content = ?1 WHERE content = ?2",
             params![WELCOME_CONTENT, WELCOME_CONTENT_PREV],
         )?;
         Ok(())
@@ -115,8 +113,9 @@ impl Database {
 
     pub fn get_notes(&self) -> Result<Vec<NoteRow>> {
         let conn = self.conn.lock().unwrap();
+        // deleted_at 只用于过滤旧版本软删除留下的行，见 purge_legacy_deleted
         let mut stmt = conn.prepare(
-            "SELECT id, title, content, color, font_size, position_x, position_y, width, height, is_pinned, sticky_edge, is_hidden, created_at, updated_at, deleted_at FROM notes ORDER BY updated_at DESC"
+            "SELECT id, title, content, color, font_size, position_x, position_y, width, height, is_pinned, sticky_edge, is_hidden, created_at, updated_at FROM notes WHERE deleted_at IS NULL ORDER BY updated_at DESC"
         )?;
 
         let notes = stmt.query_map([], |row| {
@@ -135,7 +134,6 @@ impl Database {
                 is_hidden: row.get::<_, i32>(11)? != 0,
                 created_at: row.get(12)?,
                 updated_at: row.get(13)?,
-                deleted_at: row.get(14)?,
             })
         })?;
 
@@ -199,20 +197,16 @@ impl Database {
 
     pub fn delete_note(&self, id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        let now = Utc::now().to_rfc3339();
-        conn.execute("UPDATE notes SET deleted_at = ? WHERE id = ?", params![now, id])?;
+        conn.execute("DELETE FROM notes WHERE id = ?", params![id])?;
         Ok(())
     }
 
-    pub fn restore_note(&self, id: &str) -> Result<()> {
+    /// 早期版本的删除是软删除，被删内容会永久留在 memo.db 里，升级后一次性物理清除
+    pub fn purge_legacy_deleted(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("UPDATE notes SET deleted_at = NULL WHERE id = ?", params![id])?;
-        Ok(())
-    }
-
-    pub fn empty_trash(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM notes WHERE deleted_at IS NOT NULL", [])?;
+        if conn.execute("DELETE FROM notes WHERE deleted_at IS NOT NULL", [])? > 0 {
+            conn.execute("VACUUM", [])?;
+        }
         Ok(())
     }
 }
@@ -227,6 +221,10 @@ pub fn init_db(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(db_path.parent().unwrap())?;
 
     let db = Database::new(db_path.to_str().unwrap())?;
+    // 历史遗留清理属于维护性操作，失败也不能阻止应用启动
+    if let Err(e) = db.purge_legacy_deleted() {
+        eprintln!("purge legacy deleted notes failed: {}", e);
+    }
     app.manage(db);
 
     Ok(())

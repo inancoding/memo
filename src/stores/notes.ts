@@ -45,38 +45,10 @@ export const useNoteStore = defineStore('notes', () => {
   async function deleteNote(id: string) {
     try {
       await invoke('delete_note', { id })
-      const note = notes.value.find(n => n.id === id)
-      if (note) {
-        note.deletedAt = new Date().toISOString()
-      }
+      const index = notes.value.findIndex(n => n.id === id)
+      if (index !== -1) notes.value.splice(index, 1)
     } catch (e) {
       console.error('Failed to delete note:', e)
-    }
-  }
-
-  async function restoreNote(id: string) {
-    try {
-      await invoke('restore_note', { id })
-      const note = notes.value.find(n => n.id === id)
-      if (note) {
-        note.deletedAt = null
-      }
-    } catch (e) {
-      console.error('Failed to restore note:', e)
-    }
-  }
-
-  async function permanentDelete(id: string) {
-    const index = notes.value.findIndex(n => n.id === id)
-    if (index !== -1) notes.value.splice(index, 1)
-  }
-
-  async function emptyTrash() {
-    try {
-      await invoke('empty_trash')
-      notes.value = notes.value.filter(n => n.deletedAt === null)
-    } catch (e) {
-      console.error('Failed to empty trash:', e)
     }
   }
 
@@ -86,8 +58,5 @@ export const useNoteStore = defineStore('notes', () => {
     createNote,
     updateNote,
     deleteNote,
-    restoreNote,
-    permanentDelete,
-    emptyTrash,
   }
 })

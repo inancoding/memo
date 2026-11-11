@@ -106,7 +106,7 @@ const timeAgo = computed(() => formatTime(props.note.updatedAt))
               <i class="i-lucide-trash-2 w-4 h-4" />
             </n-button>
           </template>
-          确定删除这条便签吗？
+          确定删除这条便签吗？删除后无法恢复。
         </n-popconfirm>
       </div>
     </div>

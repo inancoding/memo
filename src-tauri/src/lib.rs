@@ -92,6 +92,23 @@ fn load_window_state(app_handle: &tauri::AppHandle) -> Option<WindowState> {
     serde_json::from_str(&content).ok()
 }
 
+// 便签已彻底删除，若它正是编辑窗口当前展示的那条，就关掉窗口并清掉恢复记录
+pub(crate) fn forget_desktop_note(app_handle: &tauri::AppHandle, note_id: &str) {
+    let mut state = load_desktop_state(app_handle);
+    if state.note_id.as_deref() != Some(note_id) {
+        return;
+    }
+    let was_visible = state.editor_visible;
+    state.note_id = None;
+    state.editor_visible = false;
+    save_desktop_state(app_handle, &state);
+    if was_visible {
+        if let Some(editor) = app_handle.get_webview_window("editor") {
+            let _ = editor.hide();
+        }
+    }
+}
+
 // 显示编辑窗口并加载指定便签（预定义窗口，延迟发送事件等待前端监听就绪）
 fn show_editor_with_note(app_handle: &tauri::AppHandle, note_id: &str) {
     if let Some(editor_window) = app_handle.get_webview_window("editor") {
@@ -179,8 +196,6 @@ pub fn run() {
             commands::notes::get_notes,
             commands::notes::update_note,
             commands::notes::delete_note,
-            commands::notes::restore_note,
-            commands::notes::empty_trash,
             save_window_state_cmd,
             open_editor,
             get_autostart,

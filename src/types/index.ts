@@ -25,7 +25,6 @@ export interface Note {
   isHidden: boolean
   createdAt: string
   updatedAt: string
-  deletedAt: string | null
 }
 
 export interface AppSettings {
