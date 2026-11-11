@@ -278,6 +278,8 @@ onMounted(async () => {
   // 监听 open-note 事件
   unlistenOpenNote = await listen<string>('open-note', async (event) => {
     console.log('Received open-note event:', event.payload)
+    // 载入另一条会重置编辑器内容，先把上一条尚未落库的部分处理掉
+    if (note.value && event.payload !== note.value.id) await drainPendingSave()
     noteId.value = event.payload
     if (noteId.value) {
       console.log('Loading note:', noteId.value)
@@ -291,7 +293,7 @@ onMounted(async () => {
   unlistenClose = await appWindow.onCloseRequested(async (event) => {
     event.preventDefault()
     await saveWindowGeometry()
-    saveContent()
+    await drainPendingSave()
     await invoke('set_editor_visible', { visible: false }).catch(console.error)
     await appWindow.hide()
   })
@@ -372,6 +374,7 @@ onUnmounted(() => {
   if (moveTimer) clearTimeout(moveTimer)
   if (inputTimer) clearTimeout(inputTimer)
   if (rehideTimer) clearTimeout(rehideTimer)
+  clearRetryTimer()
   cancelAnimationFrame(animFrame)
   window.removeEventListener('storage', handleStorageChange)
 })
@@ -410,6 +413,7 @@ async function saveWindowGeometry() {
 async function loadNote() {
   if (!noteId.value) return
   edgeHideEnabled.value = readEdgeHideSetting()
+  resetSaveState()
   try {
     const notes = await invoke<Note[]>('get_notes')
     note.value = notes.find(n => n.id === noteId.value) || null
@@ -417,7 +421,9 @@ async function loadNote() {
       await nextTick()
       editorRef.value.innerHTML = note.value.content
       applyAutoLinks()
-      
+      // 上次保存失败时留在临时文件里的那份比数据库新，需要覆盖回来
+      await applyRecoveryIfNeeded()
+
       // 恢复窗口大小和位置
       if (note.value.width && note.value.height) {
         await appWindow.setSize(new PhysicalSize(note.value.width, note.value.height))
@@ -535,20 +541,181 @@ function refreshAutoLinks() {
   if (marked) restoreCaret(root)
 }
 
-function saveContent() {
-  if (!note.value || !editorRef.value) return
-  // 序列化时移除自动链接高亮，保证存库的是纯净文本
+// 序列化编辑器内容；移除自动链接高亮，保证存库的是纯净文本
+function serializeContent(): string | null {
+  if (!note.value || !editorRef.value) return null
   const clone = editorRef.value.cloneNode(true) as HTMLElement
   clone.querySelectorAll('.auto-link').forEach(span => {
     const text = document.createTextNode(span.textContent || '')
     span.replaceWith(text)
   })
   clone.normalize()
-  const content = clone.innerHTML
-  invoke('update_note', { request: { id: note.value.id, content } })
-    .then(() => emit('notes-changed'))
-    .catch(console.error)
+  return clone.innerHTML
 }
+
+// ===== 自动保存：失败可见 + 保留内容 + 指数退避重试 + 兜底落盘 =====
+const RETRY_BASE_MS = 2000
+const RETRY_MAX_MS = 30000
+// 连续失败到达这个次数就写临时文件，此后即使程序被强杀内容也能找回
+const RECOVERY_AFTER_FAILS = 3
+
+const saveFailed = ref(false)
+const saveError = ref('')
+const savedToFallback = ref(false)
+const recoveredHint = ref(false)
+
+let pendingContent: string | null = null
+let worker: Promise<void> | null = null
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+let retryDelayMs = 0
+let failCount = 0
+let draining = false
+
+function clearRetryTimer() {
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
+}
+
+function scheduleRetry() {
+  if (retryTimer || draining) return
+  retryDelayMs = Math.min(retryDelayMs ? retryDelayMs * 2 : RETRY_BASE_MS, RETRY_MAX_MS)
+  retryTimer = setTimeout(() => {
+    retryTimer = null
+    void runSaveWorker()
+  }, retryDelayMs)
+}
+
+// 单次写入数据库；失败时保留 pendingContent 并安排退避重试
+async function saveOnce(id: string, content: string): Promise<boolean> {
+  try {
+    await invoke('update_note', { request: { id, content } })
+    failCount = 0
+    retryDelayMs = 0
+    clearRetryTimer()
+    saveFailed.value = false
+    saveError.value = ''
+    emit('notes-changed')
+    if (savedToFallback.value) {
+      savedToFallback.value = false
+      await invoke('clear_recovery_content', { noteId: id }).catch(() => {})
+    }
+    // 等库期间用户又改了内容，交给下一轮循环
+    if (pendingContent === content) pendingContent = null
+    return true
+  } catch (e) {
+    failCount += 1
+    saveFailed.value = true
+    saveError.value = e instanceof Error ? e.message : String(e)
+    if (failCount >= RECOVERY_AFTER_FAILS) {
+      try {
+        await invoke('write_recovery_content', { noteId: id, content })
+        savedToFallback.value = true
+      } catch {
+        // 兜底文件也写不了，只能继续把内容留在窗口里重试
+      }
+    }
+    scheduleRetry()
+    return false
+  }
+}
+
+// 串行保存：任何时刻只有一个写入循环在跑，循环会把期间新增的内容一并存完
+function runSaveWorker(): Promise<void> {
+  if (worker) return worker
+  worker = (async () => {
+    try {
+      while (pendingContent !== null) {
+        const id = note.value?.id
+        if (!id) {
+          pendingContent = null
+          return
+        }
+        if (!(await saveOnce(id, pendingContent))) return
+      }
+    } finally {
+      worker = null
+    }
+  })()
+  return worker
+}
+
+function saveContent() {
+  const content = serializeContent()
+  if (content === null) return
+  pendingContent = content
+  void runSaveWorker()
+}
+
+// 关窗 / 切换便签前调用：最多再试两轮，仍写不进就把最新内容落临时文件
+async function drainPendingSave() {
+  const content = serializeContent()
+  if (content !== null) pendingContent = content
+  draining = true
+  clearRetryTimer()
+  try {
+    for (let i = 0; i < 2 && pendingContent !== null; i++) {
+      await runSaveWorker()
+    }
+    const id = note.value?.id
+    if (pendingContent !== null && id && !savedToFallback.value) {
+      try {
+        await invoke('write_recovery_content', { noteId: id, content: pendingContent })
+        savedToFallback.value = true
+      } catch {
+        /* 提示保持可见 */
+      }
+    }
+  } finally {
+    draining = false
+  }
+}
+
+function retryNow() {
+  failCount = 0
+  retryDelayMs = 0
+  clearRetryTimer()
+  saveContent()
+}
+
+function resetSaveState() {
+  pendingContent = null
+  failCount = 0
+  retryDelayMs = 0
+  savedToFallback.value = false
+  clearRetryTimer()
+  saveFailed.value = false
+  saveError.value = ''
+}
+
+// 上次写入失败留在磁盘上的内容比数据库里的新，读回替换并告知用户
+async function applyRecoveryIfNeeded() {
+  recoveredHint.value = false
+  if (!note.value || !editorRef.value) return
+  let recovery: string | null = null
+  try {
+    recovery = await invoke<string | null>('read_recovery_content', { noteId: note.value.id })
+  } catch {
+    return
+  }
+  if (recovery === null) return
+  savedToFallback.value = true
+  if (recovery !== note.value.content) {
+    note.value.content = recovery
+    editorRef.value.innerHTML = recovery
+    applyAutoLinks()
+  }
+  recoveredHint.value = true
+  pendingContent = recovery
+  void runSaveWorker()
+}
+
+const saveFailText = computed(() =>
+  savedToFallback.value
+    ? '保存失败，内容已暂存到临时文件，正在自动重试'
+    : '保存失败，内容仅存在于当前窗口，正在自动重试',
+)
 
 // ===== 自动识别网址 / 邮箱 / 手机号并高亮 =====
 const AUTO_LINK_RE =
@@ -870,7 +1037,7 @@ function changeColor(color: NoteColor) {
 }
 
 async function handleClose() {
-  saveContent()
+  await drainPendingSave()
   // 隐藏窗口而不是关闭，以便下次可以重新打开
   await appWindow.hide()
 }
@@ -918,6 +1085,18 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
         :class="`edge-${snappedEdge}`"
         :style="{ background: noteBg }"
       />
+
+      <!-- 保存失败常驻提示：成功之前不消失，避免用户以为内容已经存下来了 -->
+      <div v-if="saveFailed" class="save-notice is-error" :title="saveError">
+        <i class="i-lucide-triangle-alert w-3.5 h-3.5 shrink-0" />
+        <span class="save-notice-text">{{ saveFailText }}</span>
+        <n-button text size="tiny" @click="retryNow">立即重试</n-button>
+      </div>
+      <div v-else-if="recoveredHint" class="save-notice is-info">
+        <i class="i-lucide-circle-check w-3.5 h-3.5 shrink-0" />
+        <span class="save-notice-text">已恢复上次未能保存的内容</span>
+        <n-button text size="tiny" title="知道了" @click="recoveredHint = false">知道了</n-button>
+      </div>
 
       <!-- Title Bar / Drag Region -->
       <div class="titlebar" @mousedown="handleDragStart">
@@ -1064,6 +1243,43 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   left: 0;
   width: 100%;
   height: 8px;
+}
+
+/* 保存失败 / 已恢复提示：绝对定位贴在标题栏下方，不改动盒模型以免影响内容位置 */
+.save-notice {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #fff;
+}
+
+.save-notice.is-error {
+  background: rgb(153 27 27 / 0.94);
+}
+
+.save-notice.is-info {
+  background: rgb(30 64 175 / 0.94);
+}
+
+.save-notice-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.save-notice .n-button,
+.save-notice .n-button:hover {
+  color: #fff !important;
 }
 
 .titlebar {

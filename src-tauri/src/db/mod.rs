@@ -23,6 +23,28 @@ pub struct NoteRow {
     pub updated_at: String,
 }
 
+const NOTE_COLUMNS: &str =
+    "id, title, content, color, font_size, position_x, position_y, width, height, is_pinned, sticky_edge, is_hidden, created_at, updated_at";
+
+fn map_note_row(row: &rusqlite::Row<'_>) -> Result<NoteRow> {
+    Ok(NoteRow {
+        id: row.get(0)?,
+        title: row.get(1)?,
+        content: row.get(2)?,
+        color: row.get(3)?,
+        font_size: row.get(4)?,
+        position_x: row.get(5)?,
+        position_y: row.get(6)?,
+        width: row.get(7)?,
+        height: row.get(8)?,
+        is_pinned: row.get::<_, i32>(9)? != 0,
+        sticky_edge: row.get(10)?,
+        is_hidden: row.get::<_, i32>(11)? != 0,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
+    })
+}
+
 pub struct Database {
     conn: Mutex<Connection>,
 }
@@ -114,34 +136,28 @@ impl Database {
     pub fn get_notes(&self) -> Result<Vec<NoteRow>> {
         let conn = self.conn.lock().unwrap();
         // deleted_at 只用于过滤旧版本软删除留下的行，见 purge_legacy_deleted
-        let mut stmt = conn.prepare(
-            "SELECT id, title, content, color, font_size, position_x, position_y, width, height, is_pinned, sticky_edge, is_hidden, created_at, updated_at FROM notes WHERE deleted_at IS NULL ORDER BY updated_at DESC"
-        )?;
+        let sql = format!(
+            "SELECT {} FROM notes WHERE deleted_at IS NULL ORDER BY updated_at DESC",
+            NOTE_COLUMNS
+        );
+        let mut stmt = conn.prepare(&sql)?;
 
-        let notes = stmt.query_map([], |row| {
-            Ok(NoteRow {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                content: row.get(2)?,
-                color: row.get(3)?,
-                font_size: row.get(4)?,
-                position_x: row.get(5)?,
-                position_y: row.get(6)?,
-                width: row.get(7)?,
-                height: row.get(8)?,
-                is_pinned: row.get::<_, i32>(9)? != 0,
-                sticky_edge: row.get(10)?,
-                is_hidden: row.get::<_, i32>(11)? != 0,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
-            })
-        })?;
+        let notes = stmt.query_map([], map_note_row)?;
 
         let mut result = Vec::new();
         for note in notes {
             result.push(note?);
         }
         Ok(result)
+    }
+
+    pub fn get_note(&self, id: &str) -> Result<NoteRow> {
+        let conn = self.conn.lock().unwrap();
+        let sql = format!(
+            "SELECT {} FROM notes WHERE id = ? AND deleted_at IS NULL",
+            NOTE_COLUMNS
+        );
+        conn.query_row(&sql, params![id], map_note_row)
     }
 
     pub fn update_note(
@@ -186,13 +202,14 @@ impl Database {
         let mut final_params: Vec<&dyn rusqlite::types::ToSql> = params_refs;
         final_params.push(&id);
 
-        conn.execute(&sql, final_params.as_slice())?;
-
+        let affected = conn.execute(&sql, final_params.as_slice())?;
         drop(conn);
-        let notes = self.get_notes()?;
-        notes.into_iter().find(|n| n.id == id).ok_or_else(|| {
-            rusqlite::Error::QueryReturnedNoRows
-        })
+
+        // 自动保存是高频调用，只读回被改的这一行，不能全表加载（便签含 base64 图片）
+        if affected == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+        self.get_note(id)
     }
 
     pub fn delete_note(&self, id: &str) -> Result<()> {
@@ -228,4 +245,41 @@ pub fn init_db(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(db);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_db() -> (Database, std::path::PathBuf) {
+        let path = std::env::temp_dir().join(format!("memo-test-{}.db", Uuid::new_v4()));
+        let db = Database::new(path.to_str().unwrap()).unwrap();
+        (db, path)
+    }
+
+    #[test]
+    fn update_note_reads_back_only_its_own_row() {
+        let (db, path) = temp_db();
+        let a = db.create_note("yellow", "a").unwrap();
+        let b = db.create_note("yellow", "b").unwrap();
+
+        let updated = db
+            .update_note(&a.id, None, Some("changed"), None, None, None, None, None, None, None, None, None)
+            .unwrap();
+
+        assert_eq!(updated.id, a.id);
+        assert_eq!(updated.content, "changed");
+        assert_eq!(db.get_note(&b.id).unwrap().content, "b");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn update_note_on_missing_id_reports_no_rows() {
+        let (db, path) = temp_db();
+        let err = db
+            .update_note("missing", None, Some("x"), None, None, None, None, None, None, None, None, None)
+            .unwrap_err();
+        assert!(matches!(err, rusqlite::Error::QueryReturnedNoRows));
+        let _ = std::fs::remove_file(path);
+    }
 }

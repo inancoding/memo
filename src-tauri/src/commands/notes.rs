@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Manager, State};
 use crate::db::{Database, NoteRow};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -113,6 +113,84 @@ pub fn delete_note(
     id: String,
 ) -> Result<(), String> {
     db.delete_note(&id).map_err(|e| e.to_string())?;
+    // 删除是彻底的，保存失败留下的兜底文件也一并清掉，否则会残留明文
+    let _ = remove_recovery_file(&app_handle, &id);
     crate::forget_desktop_note(&app_handle, &id);
     Ok(())
+}
+
+// ===== 自动保存失败时的兜底落盘 =====
+// 数据库写入持续失败时把最新内容写成独立文件，下次打开该便签再读回，避免用户输入丢失。
+fn recovery_file_in(base: &std::path::Path, note_id: &str) -> Option<std::path::PathBuf> {
+    // id 来自前端，限制为 UUID 字符，避免拼路径越界
+    if note_id.is_empty()
+        || !note_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return None;
+    }
+    Some(base.join("recovery").join(format!("{}.html", note_id)))
+}
+
+fn recovery_path(app_handle: &tauri::AppHandle, note_id: &str) -> Option<std::path::PathBuf> {
+    recovery_file_in(&app_handle.path().app_data_dir().ok()?, note_id)
+}
+
+fn remove_recovery_file(app_handle: &tauri::AppHandle, note_id: &str) -> Result<(), String> {
+    let Some(path) = recovery_path(app_handle, note_id) else {
+        return Ok(());
+    };
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn write_recovery_content(
+    app_handle: tauri::AppHandle,
+    note_id: String,
+    content: String,
+) -> Result<(), String> {
+    let path = recovery_path(&app_handle, &note_id).ok_or_else(|| "invalid note id".to_string())?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn read_recovery_content(
+    app_handle: tauri::AppHandle,
+    note_id: String,
+) -> Option<String> {
+    recovery_path(&app_handle, &note_id).and_then(|p| std::fs::read_to_string(p).ok())
+}
+
+#[tauri::command]
+pub fn clear_recovery_content(
+    app_handle: tauri::AppHandle,
+    note_id: String,
+) -> Result<(), String> {
+    remove_recovery_file(&app_handle, &note_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::recovery_file_in;
+    use std::path::Path;
+
+    #[test]
+    fn recovery_file_stays_inside_app_data_dir() {
+        let base = Path::new("data");
+        assert_eq!(
+            recovery_file_in(base, "6f1c-2").unwrap(),
+            base.join("recovery").join("6f1c-2.html")
+        );
+        for bad in ["", "../evil", "a\\b", "a/b", "a b"] {
+            assert!(recovery_file_in(base, bad).is_none(), "accepted {:?}", bad);
+        }
+    }
 }
