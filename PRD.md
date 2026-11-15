@@ -125,7 +125,7 @@
 
 - Windows：Rust 1.78 起 Tier-1 Windows 目标要求 Win10+；WebView2 Runtime 109 之后不再支持 Win7/8/8.1（§9.3）。
 - Linux：Tauri v2 强制 WebKitGTK **4.1**（libsoup3）。发行版下限由两处共同决定——运行时库是否存在，以及构建机的 glibc 版本（二进制向上不兼容更老的 glibc，症状是 `GLIBC_2.xx not found`）。官方建议「在你想要支持的最老系统上构建」，并明确点名 **Ubuntu 22.04 与 Debian 12 是合适的基线**。因此 CI 在 `ubuntu:22.04` 容器里构建，而不是在 `ubuntu-latest`（现已指向 Ubuntu 26.04）上直接构建。
-- RPM 的包名依赖与 deb 不同（`webkit2gtk4.1` / `gtk3` / `libappindicator-gtk3`），且当前 rpm 是在 Ubuntu 容器里用 `rpmbuild` 产出的，**首次发布前需 `rpm -qpR` 核对依赖名是否能在 Fedora 上解析**。
+- RPM 的依赖写成 soname（`libwebkit2gtk-4.1.so.0` / `libgtk-3.so.0` / `libayatana-appindicator3.so.1`），且 rpm 是在 Ubuntu 容器里用 `rpmbuild` 产出的。v1.0.1 已读产物元数据核对（**仍未实机安装**）：deb 依赖 `libwebkit2gtk-4.1-0`、`libgtk-3-0`、`libayatana-appindicator3-1` 在 Ubuntu 24.04 与 26.04 都能解析（`libgtk-3-0` 已由 `libgtk-3-0t64` 的 `Provides:` 顶替）；rpm 的三个 soname 在 Fedora 45 分别由 `webkit2gtk4.1`、`gtk3`、`libayatana-appindicator-gtk3` 提供。
 
 **CI/发布**：单一工作流 `.github/workflows/build.yml`，在 `v*` tag 或手动触发时运行：
 
@@ -693,7 +693,7 @@ memo/
 - [ ] 清理调试残留（当前 24 处 `console.log`、5 处 `println!`）；`catch` 后仅打日志的 19 处逐项判定是否升级为可见提示
 - [x] 新增 `CHANGELOG.md`（并已接进 CI：Release 正文取其最上一节）
 - [x] Linux deb/rpm 重新纳入 CI，工作流合并为单个 `build.yml`
-- [ ] 首次 Linux CI 出包后核对产物：`dpkg -I`、`rpm -qpR` 的依赖名能否在 Ubuntu 22.04 / Fedora 上解析
+- [x] 首次 Linux CI 出包后核对产物依赖（v1.0.1：deb 见 Ubuntu 24.04/26.04、rpm 见 Fedora 45 均可解析；见 §2.1）
 - [ ] README 与 PRD 保持一致（README 当前仍描述跨平台 / 回收站等已作废内容）
 - [ ] 按 §7.3 完成 Win10 / Win11 × 缩放 × 多显示器手测
 - [ ] 按 §7.1 补测冷启动、空闲内存、后台 CPU
