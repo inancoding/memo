@@ -1,0 +1,150 @@
+name: Build
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Windows · NSIS
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build NSIS installer
+        run: npm run tauri build -- --bundles nsis
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: memo-windows
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+  linux:
+    name: Linux · deb + rpm
+    runs-on: ubuntu-latest
+    # 固定用 Ubuntu 22.04 容器构建：二进制的 glibc 下限决定 deb/rpm 能装到多旧的发行版。
+    # ubuntu-latest 已指向 Ubuntu 26.04，直接用它会让包在 Ubuntu 22.04 / Debian 12 上报 GLIBC_x.y not found。
+    container:
+      image: ubuntu:22.04
+    steps:
+      # checkout 需要镜像里有 git，所以系统依赖必须排在 checkout 之前
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            git curl wget ca-certificates gnupg xz-utils unzip which file pkg-config build-essential \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libxdo-dev libssl-dev \
+            rpm dpkg-dev
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build deb and rpm
+        run: npm run tauri build -- --bundles deb,rpm
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: memo-linux
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+          if-no-files-found: error
+
+  # ── macOS：预留，暂不构建 ────────────────────────────────────────────────
+  # 打开前必须先完成 PRD §2.4 的验证清单，其中 WindowResizeHandles.vue 依赖的
+  # startResizeDragging 在 macOS 上是否可用尚未证实（官方文档未标注平台限制）。
+  # 另外还需要：`npx tauri icon` 生成 icon.icns 并加入 bundle.icon；
+  # 决定是否 Apple Developer ID 签名 + 公证（否则用户下载后会被 Gatekeeper 拦下）。
+  #
+  #  macos:
+  #    name: macOS · dmg
+  #    runs-on: macos-latest        # arm64（Apple Silicon）；Intel 需 macos-15-intel，GitHub 计划 2027 秋退役 x86_64 镜像
+  #    steps:
+  #      - uses: actions/checkout@v4
+  #      - uses: actions/setup-node@v4
+  #        with:
+  #          node-version: 22
+  #          cache: npm
+  #      - uses: dtolnay/rust-toolchain@stable
+  #      - run: npm ci
+  #      - run: npm run tauri build -- --bundles dmg
+  #      - uses: actions/upload-artifact@v4
+  #        with:
+  #          name: memo-macos
+  #          path: src-tauri/target/release/bundle/dmg/*.dmg
+  #          if-no-files-found: error
+
+  release:
+    name: Publish Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: memo-windows
+          path: artifacts
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: memo-linux
+          path: artifacts
+
+      # 发布说明的唯一来源是 CHANGELOG.md 最上面一节（首个 "## " 到下一个 "## " 之前）
+      - name: Extract release notes from CHANGELOG
+        run: |
+          awk '/^## /{n++} n==1' CHANGELOG.md > release-notes.md
+          cat release-notes.md
+
+      - name: Publish to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          files: artifacts/**/*

@@ -1,9 +1,18 @@
 # Memo 便签应用 - 产品需求文档 (PRD)
 
-> **文档版本: v1.1**
+> **文档版本: v1.2**
 > **创建日期: 2026-10-29**
-> **最后更新: 2026-11-11**
-> **状态: 已按 v0.9.4 实际实现校准；1.0.0 的两项工程质量修复已完成，四项功能待开发**
+> **最后更新: 2026-11-15**
+> **状态: v1.0.0 代码已提交（未推送未打标签）；Linux 打包重新纳入，macOS 仅做兼容性评估**
+
+**v1.2 变更摘要**（相对 v1.1）
+
+| 类型 | 内容 |
+|------|------|
+| 撤销 | §9.3「移除 Linux 支持」的决定作废：重新产出 `.deb` / `.rpm`，最低基线 Ubuntu 22.04 / Debian 12 |
+| 新增 | §2.1 发布流水线（单一 `build.yml`）与最低支持系统表；§2.4 macOS 兼容性评估；`CHANGELOG.md` 作为 Release 正文来源 |
+| 预留 | macOS 构建作业以注释形式保留在 CI 中，本版不产出安装包 |
+| 保留 | Windows 仍是主要交付平台与验收基准，Linux 包属「能装上、未实机验收」状态 |
 
 **v1.1 变更摘要**（相对 v1.0）
 
@@ -16,7 +25,7 @@
 
 ---
 
-## 0. 实现现状 (v0.9.4)
+## 0. 实现现状 (v1.0.0)
 
 本节是 PRD 与代码的对账基准。修改任何功能描述前先更新本节。
 
@@ -33,7 +42,8 @@
 | 全局快捷键 `Ctrl+Shift+N` / `Ctrl+Shift+M` | 已注册 |
 | 暗色模式（跟随系统 / 浅色 / 深色） | 便签配色有独立 dark 色值 |
 | 位置、大小逐便签记忆 | 含边缘隐藏状态与吸附边 |
-| 拖拽边缘调整窗口大小 | `shadow: false` 后由 JS 边/角热区驱动 `startResizeDragging` |
+| 拖拽边缘调整窗口大小 | `shadow: false` 后由 JS 边/角热区驱动 `startResizeDragging`（仅 Windows 实机验证过） |
+| 自动保存失败可见 + 重试 + 兜底落盘 | 串行写入队列、2s→30s 退避、恢复文件、红/蓝提示条（§7.2-1） |
 | Windows 安装包 < 10 MB | 实测 6.16 MB |
 
 ### 0.2 已实现且超出 PRD
@@ -51,7 +61,7 @@
 
 | 项 | PRD v1.0 | 实际 |
 |----|----------|------|
-| 平台 | Windows + Linux | 仅 Windows |
+| 平台 | Windows + Linux | Windows（主验收）+ Linux（重新纳入打包，未实机验收），见 §2.1 |
 | 删除模型 | 软删除 + 回收站 30 天 | 直接物理删除 |
 | 颜色数 / 色值 | 6 色（Material 系） | 8 色（见 §3.4.1） |
 | 编辑窗默认尺寸 | 300×300 | 400×450（min 300×250） |
@@ -78,12 +88,13 @@
 ### 1.2 产品定位
 一款类似 Windows 系统自带便签的桌面备忘录工具，具备边缘自动隐藏/弹出交互特性，追求极致轻量化与低资源占用。
 
-当前阶段聚焦 **Windows 单平台做深**，不再以跨平台为卖点（原因见 §9.3）。
+当前阶段以 **Windows 做深**为主，Linux 提供安装包但验收等级低于 Windows；macOS 只做兼容性评估、暂不出包（决策与依据见 §2.1、§2.4、§9.3）。
 
 ### 1.3 目标用户
 - 需要快速记录临时信息的桌面用户
 - 偏好轻量工具、反感臃肿软件的用户
 - Windows 10 / 11 用户（单屏与多屏办公场景）
+- Linux 桌面用户（带 `libwebkit2gtk-4.1` 的发行版，见 §2.1）
 
 ### 1.4 技术栈
 
@@ -103,16 +114,38 @@
 
 ### 2.1 支持平台
 
-| 平台 | 安装包格式 | 最低系统版本 |
-|------|-----------|-------------|
-| Windows | `.exe`（NSIS，perMachine） | Windows 10（build 1809+） |
+| 平台 | 安装包格式 | 最低系统版本 | 验收等级 |
+|------|-----------|-------------|----------|
+| Windows | `.exe`（NSIS，perMachine） | Windows 10 build 1809+（WebView2 Runtime 随 1803+ 预装） | ✅ 主要交付平台，实机验收 |
+| Linux (deb) | `.deb` | Ubuntu 22.04 / Debian 12 起 | 🔶 仅 CI 产出，未实机验收 |
+| Linux (rpm) | `.rpm` | Fedora 38 起（同类 RPM 发行版需系统自带 `webkit2gtk4.1`） | 🔶 仅 CI 产出，未实机验收 |
+| macOS | `.dmg`（预留） | 见 §2.4 | ⛔ 本版不构建 |
 
-**CI/发布**：GitHub Actions 在 `v*` tag 上触发，构建 Windows 安装包并发布到 Releases。Linux 工作流已随平台一并移除。
+**最低版本的由来**：
 
-**安装器语言**：当前仅 `SimpChinese`。i18n 落地时需增加 `English`（见 §3.6）。
+- Windows：Rust 1.78 起 Tier-1 Windows 目标要求 Win10+；WebView2 Runtime 109 之后不再支持 Win7/8/8.1（§9.3）。
+- Linux：Tauri v2 强制 WebKitGTK **4.1**（libsoup3）。发行版下限由两处共同决定——运行时库是否存在，以及构建机的 glibc 版本（二进制向上不兼容更老的 glibc，症状是 `GLIBC_2.xx not found`）。官方建议「在你想要支持的最老系统上构建」，并明确点名 **Ubuntu 22.04 与 Debian 12 是合适的基线**。因此 CI 在 `ubuntu:22.04` 容器里构建，而不是在 `ubuntu-latest`（现已指向 Ubuntu 26.04）上直接构建。
+- RPM 的包名依赖与 deb 不同（`webkit2gtk4.1` / `gtk3` / `libappindicator-gtk3`），且当前 rpm 是在 Ubuntu 容器里用 `rpmbuild` 产出的，**首次发布前需 `rpm -qpR` 核对依赖名是否能在 Fedora 上解析**。
+
+**CI/发布**：单一工作流 `.github/workflows/build.yml`，在 `v*` tag 或手动触发时运行：
+
+| 作业 | 运行环境 | 命令 | 产物 |
+|------|----------|------|------|
+| `windows` | `windows-latest` | `tauri build -- --bundles nsis` | `*.exe` |
+| `linux` | `ubuntu-latest` + 容器 `ubuntu:22.04` | `tauri build -- --bundles deb,rpm` | `*.deb`、`*.rpm` |
+| `macos` | — | 已在文件中以注释预留（`--bundles dmg`） | 不产出 |
+| `release` | `ubuntu-latest` | 汇总三个作业的产物到同一个 Release | — |
+
+原先的 `build-windows.yml` / `build-linux.yml` 两个文件已合并为上面这一个。
+
+**Release 正文**：不再使用 `generate_release_notes`，改为抽取 `CHANGELOG.md` 最上面一节（第一个 `## ` 到下一个 `## ` 之前）。所以**发版流程是：先写 CHANGELOG → 再打 tag**，发布说明里的「最低支持系统」表也来自这里。
+
+**安装器语言**：NSIS 当前仅 `SimpChinese`。i18n 落地时需增加 `English`（见 §3.6）。
 
 ### 2.2 安装包体积目标
 - Windows 安装包：**< 10 MB**（v0.9.4 实测 6.16 MB ✅）
+- Linux `.deb` / `.rpm`：目标同量级（< 15 MB），**尚未实测**；RPM 通常比 deb 略大
+- 注意：deb/rpm 依赖系统 WebKitGTK，本体不含浏览器内核，体积不会像 Electron 那样膨胀
 
 ### 2.3 运行时资源目标
 
@@ -121,6 +154,54 @@
 | 内存占用（空闲） | < 80 MB | 未测，列入 1.0 验收 |
 | CPU 占用（后台驻留） | < 1% | 未测，列入 1.0 验收 |
 | 冷启动时间 | < 2 秒 | 未测，列入 1.0 验收 |
+
+### 2.4 macOS 兼容性评估（预留，暂不构建）
+
+结论先行：**技术上大概率能跑起来，但有 3 个未验证项和 2 个必须先决策的产品形态问题，因此本版只出 Windows + Linux。** 评估依据均为 2026-11-15 当日核对的官方文档，未标「实测」的都没有本机验证过。
+
+**① 版本与架构下限**
+
+| 项 | 数值 | 来源 |
+|----|------|------|
+| Tauri v2 官方支持 | macOS **Catalina 10.15** 及以后 | 官方 Prerequisites 页 |
+| `bundle.macOS.minimumSystemVersion` 默认 | `10.13`（映射到 `LSMinimumSystemVersion` / `MACOSX_DEPLOYMENT_TARGET`） | 官方 Configuration 参考 |
+| Rust 对 Apple Silicon 目标 | `aarch64-apple-darwin` 支持 **macOS 11.0+**（Big Sur） | rustc 平台支持表，出包前建议再核对一次 |
+| Rust 对 Intel 目标 | `x86_64-apple-darwin` 已按 RFC 3841 从 Tier 1 降为 Tier 2（Apple 与 GitHub 正在退场 x86_64 macOS） | Rust RFC 3841 |
+| GitHub Actions 运行器 | 免费 macOS runner 已全面 arm64 化：`macos-latest` 指向 macos-26，`macos-14` 镜像已于 2026-11-02 退役；Intel 镜像 `macos-15-intel` 是最后一个 x86_64 镜像，预计 2027 年内退役 | GitHub Changelog / runner-images |
+
+⇒ 实际对外承诺应写成 **macOS 11 Big Sur（Apple Silicon）**；若要覆盖 Intel 老机型得单独构建 x86_64，而且这条路正在被生态关掉。是否做 universal binary（`lipo` 合 arm64+x86_64）后续再定，代价是要维护两台构建机或交叉编译。
+
+**② 已知可以直接复用的部分**
+
+- **窗口拖动**：`App.vue` 与 `NoteEditorWindow.vue` 用的是手写 `mousedown` + `setPosition(PhysicalPosition)`，不依赖 `-webkit-app-region: drag`，跨平台无差异。当初为规避 Windows 原生标题栏行为而做的这套自定义方案，在 macOS 上同样成立。
+- **透明 + 无边框**：`transparent: true` + `decorations: false` 在 macOS 可用；旧版需要的 `macOSPrivateApi` 开关在 Tauri 2.12.1+ 已是 no-op（官方写明「API 现在始终启用」），无需额外配置。
+- **开机自启**：`tauri-plugin-autostart` 的 `MacosLauncher::LaunchAgent` + `--autostart` 参数已经在代码里配好，macOS 走 LaunchAgent，Linux 走 autostart 文件。
+- **全局快捷键**：`tauri-plugin-global-shortcut` 支持 macOS。代码里注册的是 `Modifiers::CONTROL | Modifiers::SHIFT`（`src-tauri/src/lib.rs` 的 shortcuts 初始化），在 Mac 上即 ⌃⇧N / ⌃⇧M，能触发但不符合 Mac 习惯；改成 ⌘⇧N 要用 `Modifiers::SUPER`，同时 UI 文案里的「Ctrl+Shift+…」也要按平台显示（列入 §9.2）。
+- **单实例 / 托盘菜单 / shell 打开链接**：macOS 均受支持。
+
+**③ 必须先实测的风险项（按优先级）**
+
+| # | 风险 | 现状 | 出包前如何验证 |
+|---|------|------|----------------|
+| 1 | **边缘拉伸**：`WindowResizeHandles.vue` 完全依赖 `startResizeDragging` | ⚠️ 未证实。官方 JS API 文档对这个方法只写了权限要求（`core:window:allow-start-resize-dragging`），**既没有平台限制说明，也没有 macOS 支持的正面说明** | 在真机上用 6px 边/12px 角热区试八个方向；若无效，需要加 JS 兜底（`setPosition` + `setSize` 自行算 resize），这是 macOS 出包的主要成本 |
+| 2 | **`shadow: false` 是 Windows 专用绕法** | 我们的圆角/无边框方案是为 Win10 服务的；macOS 有自己的窗口圆角与阴影，照抄会显得扁平奇怪 | 用平台配置文件 `src-tauri/tauri.macos.conf.json` 覆写 `shadow`/圆角 CSS，避免继续污染 Windows 配置 |
+| 3 | **毛玻璃 / backdrop-filter** | WKWebView 支持该属性，但 8 色配色里的模糊强度、暗色模式对比度在 Mac 上没人看过 | 逐色截图对比，必要时在 macOS 上降低模糊或换纯色 |
+
+**④ 出包前必须先定的产品问题**
+
+- **托盘常驻 vs Dock**：Memo 的核心形态是「关窗不退出、驻留托盘」。macOS 上应用退出靠 Cmd+Q 且默认「最后一个窗口关闭即退出」，同时 Dock 图标一直在，用户会看到两套退出入口。需要决定是否把 `main`/`editor` 都隐藏后改用 **accessory（无 Dock 图标）激活策略**，并补一份 macOS 风格的应用菜单（关于/退出）。这不是打包问题，是交互形态问题。
+- **签名与公证**：没有 Apple Developer ID 就不能 `codesign` + `notarize`，用户下载 `.dmg` 会撞 Gatekeeper（需在「系统设置 → 隐私与安全性」手动放行，且 LaunchAgent 自启在 Gatekeeper 拦截下也不稳）。**这是要不要花 99 USD/年的商业决定**，不是技术活。
+- **图标**：`src-tauri/icons/` 目前只有 png/ico，`icon.icns` 在 v0.9.2 那次「移除缺失的 icon.icns 引用」中被拿掉了。macOS 出包前需重跑 `npx tauri icon` 生成 icns 并加回 `bundle.icon`。
+- **数据目录**：变成 `~/Library/Application Support/com.memo.app/memo.db`（§3.5.1 已列出三平台路径），仍是同账户明文可读；加密的威胁模型（§10 问题 5）需要按 macOS 重述一遍——Keychain 对应 Windows 侧的 DPAPI 方案。
+- **安装器语义**：NSIS 的 `perMachine` + 管理员权限在 macOS 没有对应物，`.dmg` 拖进 `/Applications` 是 per-user 行为，卸载即删 `.app`（但不会自动删数据目录）。
+
+**⑤ 如果要启用，最小改动清单**
+
+1. `npx tauri icon` 生成 `icon.icns`，写入 `bundle.icon`；
+2. 新增 `src-tauri/tauri.macos.conf.json` 覆写 `shadow`/`transparent` 相关项；
+3. 真机验证 §③-1 的拉伸，视结果决定是否写 JS resize 兜底；
+4. 定 §④ 的激活策略与是否付费签名；
+5. 解开 `build.yml` 中 `macos` 作业的注释，产物目录 `target/release/bundle/dmg/*.dmg`（未签名时 `create-dmg` 步骤仍会产出 dmg）。
 
 ---
 
@@ -315,7 +396,13 @@
 
 前端映射为 camelCase（`isPinned`、`stickyEdge`、`deletedAt` 已移除）。
 
-**数据位置**：`%APPDATA%\com.memo.app\`
+**数据位置**（Tauri `app_data_dir`，随平台不同）：
+
+| 平台 | 路径 |
+|------|------|
+| Windows | `%APPDATA%\com.memo.app\` |
+| Linux | `~/.local/share/com.memo.app/` |
+| macOS（预留） | `~/Library/Application Support/com.memo.app/` |
 
 | 文件 | 内容 |
 |------|------|
@@ -323,6 +410,7 @@
 | `window_state.json` | 主窗口位置尺寸 |
 | `desktop_state.json` | 最后打开的便签 id + 编辑窗可见性 |
 | `welcome_note_seeded` / `autostart_initialized` | 首次运行标记 |
+| `recovery/<noteId>.html` | 保存彻底失败时的正文兜底文件（§7.2-1），恢复或删便签后清除 |
 
 #### 3.5.2 数据导入/导出（⏭ 后续版本，优先级建议紧随 1.0）
 - 导出全部便签为 JSON（含位置、颜色、尺寸等完整元数据）
@@ -530,13 +618,15 @@ id 参数在 Rust 侧限制为 UUID 字符，防止拼接路径越界（有单�
 - Windows 1080p / 2K / 4K，HiDPI 缩放（边缘吸附阈值已按 `scale_factor` 换算）
 - 多显示器：便签位置跨显示器记忆，吸附基于所在显示器工作区
 - 🔶 1.0 验收：Win10 与 Win11 各至少一台，100% / 150% 缩放，单屏与双屏组合，实测窗口拉伸、圆角、边缘隐藏、开机自启恢复
+- 🔶 **Linux（新增，未实机验收）**：历史上 v0.8.10–0.8.11 在 deepin 上验证过，当时的白屏修复（`main.rs` 里 `#[cfg(target_os = "linux")]` 禁用 WebKitGTK DMABUF 渲染器）仍在代码里。重新出包后需在一台 Ubuntu 22.04 + 一台 Fedora 上至少验证：启动不白屏、托盘可见（GNOME 需 AppIndicator 扩展）、边缘拉伸、边缘隐藏、开机自启、圆角与 `shadow: false`/`transparent: true` 在 GTK 下的观感、deb/rpm 依赖能否解析
+- ⚠️ 已知 Linux 差异：`src/tray/mod.rs` 用 `#[cfg(not(target_os = "linux"))]` 关掉了左键直接打开主窗（appindicator 左键原生弹菜单），Linux 用户需从菜单点「打开Memo」
 
 ### 7.4 安全性
 - 不收集用户数据，所有数据仅存本地
 - 不主动发起网络请求（当前无任何网络出口；更新检查未实现）
 - 数据存于用户数据目录而非安装目录
 - **存储为明文 SQLite**：已评估加密方案（SQLCipher / 纯 Rust 字段级 AES-GCM / DPAPI 密钥 / EFS / BitLocker），当前决定**暂不实施**，威胁模型明确后再评估（见 §10 问题 5）
-- 需知悉的既有事实：同 Windows 账户下的任意进程可直接读取 `memo.db`；离线拷贝与整机 BitLocker 属系统层责任
+- 需知悉的既有事实：同一登录账户下的任意进程可直接读取 `memo.db`（Windows 为 `%APPDATA%`、Linux 为 `~/.local/share`）；离线拷贝与整机 BitLocker 属系统层责任
 
 ### 7.5 可访问性
 - 键盘完全操作 ⏭ 后续（依赖窗口内快捷键补齐）
@@ -570,12 +660,13 @@ memo/
 │   │   ├── db/mod.rs                 # rusqlite DAO
 │   │   └── tray/mod.rs               # 托盘菜单
 │   ├── capabilities/default.json     # 窗口权限 ACL（含 start-resize-dragging）
-│   ├── Cargo.toml / tauri.conf.json
-│   └── WindowsOnly.md                # 平台决策说明
-├── .github/workflows/build-windows.yml
-├── PRD.md / UI-DESIGN.md / README.md
+│   └── Cargo.toml / tauri.conf.json  # 主配置 bundle.targets=["nsis"]，Linux 由 tauri.linux.conf.json 覆写为 deb+rpm
+├── .github/workflows/build.yml       # Windows + Linux 一次构建，release 作业汇总发布
+├── PRD.md / UI-DESIGN.md / README.md / CHANGELOG.md
 └── design-system/ / vibe_images/     # 设计素材，非构建输入
 ```
+
+> 平台相关的决定集中在 §2.1 与 §2.4，没有单独的 `WindowsOnly.md`（该文件从未存在）。
 
 > PRD v1.0 建议结构中的 `SearchBar.vue`、`ColorPicker.vue`、`useNote.ts`、`useEdgeHide.ts` 未单独拆文件，逻辑分别内聚在 `App.vue`、`NoteEditorWindow.vue`、`stores/notes.ts` 中。1.0 若实现搜索与批量删除，可继续内聚，不强制拆组件。
 
@@ -600,7 +691,9 @@ memo/
 **第三优先：发布工程**
 
 - [ ] 清理调试残留（当前 24 处 `console.log`、5 处 `println!`）；`catch` 后仅打日志的 19 处逐项判定是否升级为可见提示
-- [ ] 新增 `CHANGELOG.md`
+- [x] 新增 `CHANGELOG.md`（并已接进 CI：Release 正文取其最上一节）
+- [x] Linux deb/rpm 重新纳入 CI，工作流合并为单个 `build.yml`
+- [ ] 首次 Linux CI 出包后核对产物：`dpkg -I`、`rpm -qpR` 的依赖名能否在 Ubuntu 22.04 / Fedora 上解析
 - [ ] README 与 PRD 保持一致（README 当前仍描述跨平台 / 回收站等已作废内容）
 - [ ] 按 §7.3 完成 Win10 / Win11 × 缩放 × 多显示器手测
 - [ ] 按 §7.1 补测冷启动、空闲内存、后台 CPU
@@ -619,13 +712,17 @@ memo/
 - [ ] 4.5 新建 / 删除卡片与最小化动画打磨
 - [ ] 自动更新机制
 - [ ] 7.5 键盘完全操作
+- [ ] macOS 出包（前置条件见 §2.4 ⑤：icns、`shadow` 平台覆写、`startResizeDragging` 真机验证、激活策略与是否付费签名）
+- [ ] Linux 实机验收 + 桌面环境适配（GNOME AppIndicator、Wayland/X11、`shadow: false` 在 GTK 下的表现）
 - [ ] v2 候选：分类 / 标签、提醒与定时、存储加密
 
 ### 9.3 已移除 / 决定不做（决策记录）
 
 | 项 | 决定 | 原因 |
 |----|------|------|
-| Linux（deb / rpm）支持 | 已移除 | Tauri v2 强制 `libwebkit2gtk-4.1`（libsoup3）；UOS20、旧 deepin、Kylin、Debian ≤11 只有 4.0，依赖无法满足且无官方回退。改判为 Windows 单平台做深 |
+| Linux（deb / rpm）支持 | **2026-11-15 撤销「移除」决定，重新出包** | v0.9.2 曾因 Tauri v2 强制 `libwebkit2gtk-4.1`（libsoup3）、而 UOS20/旧 deepin/Kylin/Debian ≤11 只有 4.0 而砍掉。现按官方建议把基线定在 **Ubuntu 22.04 / Debian 12**（CI 用 `ubuntu:22.04` 容器构建以压住 glibc 下限），只承诺这一档以上的发行版；老国产发行版仍属不支持范围，理由不变 |
+| GitHub Actions `ubuntu-22.04` 标签 | 不使用 | 官方 2026-09-17 起进入废弃期、2027-04-17 完全停用；`ubuntu-latest` 又已指向 26.04 会抬高 glibc 下限，故改用 `ubuntu-latest` 主机 + `ubuntu:22.04` 容器 |
+| macOS 出包 | 本版不做，仅评估 | 见 §2.4。拉伸 API 未证实、托盘/Dock 交互形态未定、未付费签名会被 Gatekeeper 拦截 |
 | Windows 7 / 8 | 不支持 | Rust 1.78 起 Tier-1 Windows 目标要求 Win10+；WebView2 Runtime 109 之后不再支持 Win7/8/8.1 且已停止安全更新 |
 | 回收站 / 软删除 | 已移除 | 用户明确否决该模型：删除即彻底删除。附带收益是被删内容不再以明文留在库中（历史上曾累积约 7.7 MB 残留） |
 | Electron 迁移 | 不采用 | 无法根治上述问题：Electron 23+（Chromium 110）同样放弃 Win7/8；Win10 圆角也仍要靠透明窗 + CSS 同一套技法。收益不足以抵消体积与栈变更成本 |
@@ -660,4 +757,4 @@ memo/
 
 ---
 
-*— 文档版本 v1.1 | 校准基准：代码 v0.9.4（commit f491bc2）+ §7.2 两项工程质量修复（本版 1.0.0）| 下次更新时机：1.0.0 范围任一条目完成或范围变更时 —*
+*— 文档版本 v1.2 | 校准基准：代码 v1.0.0（commit 75e14cd）+ 本轮 CI/打包与文档变更 | 下次更新时机：1.0.0 范围任一条目完成或平台范围变更时 —*
