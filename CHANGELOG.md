@@ -3,6 +3,31 @@
 > 本文件是 Release 发布说明的唯一来源：`.github/workflows/build.yml` 的 `release` 作业会抽取最上面一节（第一个 `## ` 到下一个 `## ` 之前）作为 GitHub Release 正文。
 > 发版时请先在这里写好「本次更新升级内容」和「最低支持系统」，再打 `v*` 标签。
 
+## v1.0.2 · 2026-11-15
+
+### ✨ 本次更新升级内容
+
+本版是根据 deepin 23/25 实测反馈做的 Linux 修复，Windows 端功能与界面均无改动。
+
+- 🧊 **Linux 取消毛玻璃主题**：颜色栏不再出现玻璃色圆点，新建便签默认使用颜色栏第一个实色（经典黄），已有的玻璃便签在 Linux 上也按第一个实色渲染。原因是 WebKitGTK 在透明窗口里合成 `backdrop-filter` 会采到不透明白底——工具栏与颜色栏浮出近白色块，且每次聚焦 / 失焦重绘后整窗越来越白。
+- 🟦 **顺带消失的浮层白块**：编辑窗置顶 / 关闭按钮 hover 时出现的浅色底块，随窗口改为整面不透明而不再出现。
+- 📐 **Linux 关闭边缘自动隐藏**：deepin 的合成器会把程序化移动夹回屏幕内，窗口贴边后只露出把手条、本体仍停在原地，因此该功能在 Linux 上停用，设置面板同步隐藏这个开关（Windows 不受影响）。
+- 🍎 本版本仍不提供 macOS 安装包，兼容性评估记录在 PRD §2.4。
+
+### 💻 最低支持系统
+
+| 安装包 | 适用系统 | 最低版本 | 依赖与说明 |
+|--------|----------|----------|-----------|
+| `Memo_1.0.2_x64-setup.exe` | Windows | **Windows 10 build 1809 及以上**（含 Windows 11） | 需 WebView2 Runtime（Win10 1803+ 随系统更新预装，Win11 自带）；安装器为 perMachine，需要管理员权限，界面语言简体中文 |
+| `Memo_1.0.2_amd64.deb` | Debian / Ubuntu 系 | **Ubuntu 22.04、Debian 12 及以上** | 依赖 `libwebkit2gtk-4.1-0`、`libgtk-3-0`、`libayatana-appindicator3-1`；已在 Ubuntu 24.04 与 26.04 核对依赖可解析（`libgtk-3-0` 由 `libgtk-3-0t64` 提供）。Deepin / UOS / Kylin 若只带 WebKitGTK 4.0 则装不上 |
+| `Memo-1.0.2-1.x86_64.rpm` | Fedora / RHEL / openSUSE 系 | **Fedora 38 及以上**（RHEL 9 系需系统自带 `webkit2gtk4.1`） | 依赖 `libwebkit2gtk-4.1.so.0`、`libgtk-3.so.0`、`libayatana-appindicator3.so.1`；已在 Fedora 45 核对由 `webkit2gtk4.1`、`gtk3`、`libayatana-appindicator-gtk3` 提供 |
+
+Linux 补充说明：
+
+- 🖥️ 桌面环境：KDE / XFCE 托盘直接可用；**GNOME（Ubuntu 默认桌面）需要安装 AppIndicator 扩展**才能看到托盘图标。
+- 🖱️ 托盘交互：Linux 下左键点击图标会弹出菜单（appindicator 的限制），从菜单里选「打开Memo」；Windows 左键直接打开主窗口。
+- 🗂️ 数据文件位置：Windows `%APPDATA%\com.memo.app\memo.db`，Linux `~/.local/share/com.memo.app/memo.db`。目前是**明文 SQLite**，同一登录账户下的进程可直接读取。
+
 ## v1.0.1 · 2026-11-15
 
 ### ✨ 本次更新升级内容

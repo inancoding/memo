@@ -7,6 +7,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { useTheme } from './composables/useTheme'
+import { DEFAULT_NOTE_COLOR } from './composables/noteColors'
 import { useNoteStore } from './stores/notes'
 import NoteList from './components/NoteList.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
@@ -174,7 +175,7 @@ const darkThemeOverrides: GlobalThemeOverrides = {
 async function handleNewNote() {
   console.log('handleNewNote called')
   try {
-    const note = await noteStore.createNote('glass')
+    const note = await noteStore.createNote(DEFAULT_NOTE_COLOR)
     if (note) {
       console.log('Note created successfully, opening editor')
       await invoke('open_editor', { noteId: note.id })

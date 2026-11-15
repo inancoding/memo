@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { Note } from '@/types'
 import { NOTE_COLORS } from '@/types'
+import { resolveNoteColor } from '@/composables/noteColors'
 import { useTheme } from '@/composables/useTheme'
 import { useNote } from '@/composables/useNote'
 
@@ -19,7 +20,7 @@ const { isDark } = useTheme()
 const { formatTime } = useNote(() => props.note)
 
 const colorStyle = computed(() => {
-  const c = NOTE_COLORS[props.note.color]
+  const c = NOTE_COLORS[resolveNoteColor(props.note.color)]
   return {
     background: isDark.value ? c.dark : c.light,
     color: isDark.value ? c.darkText : c.text,
