@@ -7,6 +7,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { emit, listen } from '@tauri-apps/api/event'
 import { useTheme } from '@/composables/useTheme'
+import { IS_LINUX } from '@/composables/usePlatform'
 import WindowResizeHandles from '@/components/WindowResizeHandles.vue'
 import type { Note, NoteColor } from '@/types'
 import { NOTE_COLORS } from '@/types'
@@ -49,7 +50,9 @@ let rehideTimer: ReturnType<typeof setTimeout> | null = null
 let animFrame = 0
 
 // 边缘隐藏开关（读取主窗口写入的设置，localStorage 同源跨窗口共享）
+// Linux 上合成器不允许程序把窗口移到屏幕外（setPosition 被夹回屏内），整条功能在 Linux 关闭。
 function readEdgeHideSetting(): boolean {
+  if (IS_LINUX) return false
   try {
     const s = JSON.parse(localStorage.getItem('memo-settings') || '{}')
     return s?.edgeHide === true
@@ -449,6 +452,10 @@ async function loadNote() {
 }
 
 const isGlass = computed(() => !note.value || note.value.color === 'glass')
+
+// Linux 上 WebKitGTK 在透明窗口里合成 backdrop-filter 会采到不透明白底，且每次聚焦/失焦
+// 重绘让整窗越来越白，所以毛玻璃退回实色（与主列表 glass 卡片一致的渲染方式）。
+const glassBlur = computed(() => isGlass.value && !IS_LINUX)
 
 const noteBg = computed(() => {
   if (!note.value) return '#EAF2F8'
@@ -1068,8 +1075,8 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
   >
     <div
       class="editor-window"
-      :class="{ 'is-glass': isGlass }"
-      :style="isGlass ? undefined : { background: noteBg, color: noteTextColor }"
+      :class="{ 'is-glass': glassBlur }"
+      :style="glassBlur ? undefined : { background: noteBg, color: noteTextColor }"
       @mouseenter="handleWindowMouseEnter"
       @mouseleave="handleWindowMouseLeave"
     >
@@ -1107,7 +1114,7 @@ const colorEntries = Object.entries(NOTE_COLORS) as [NoteColor, typeof NOTE_COLO
             :key="key"
             class="w-3.5 h-3.5 rounded-full border-none cursor-pointer transition-all hover:scale-115"
             :class="{ 'ring-2 ring-primary ring-offset-1': note?.color === key }"
-            :style="key === 'glass'
+            :style="key === 'glass' && glassBlur
               ? { background: 'rgb(255 255 255 / 0.35)', backdropFilter: 'blur(4px)', border: '1px solid rgb(255 255 255 / 0.85)', boxShadow: '0 0 0 1px rgba(0,0,0,0.1)' }
               : { background: isDark ? val.dark : val.light, boxShadow: '0 0 0 1px rgba(0,0,0,0.1)' }"
             @mousedown.prevent="changeColor(key)"

@@ -4,6 +4,7 @@ import { getVersion } from '@tauri-apps/api/app'
 import { invoke } from '@tauri-apps/api/core'
 import { useSettingsStore } from '@/stores/settings'
 import { useTheme } from '@/composables/useTheme'
+import { IS_LINUX } from '@/composables/usePlatform'
 import type { ThemeMode } from '@/composables/useTheme'
 
 const emit = defineEmits<{ close: [] }>()
@@ -71,7 +72,7 @@ const edgeHide = computed({
             <span class="text-sm">开机自启动</span>
             <n-switch :value="launchAtStartup" @update:value="handleAutostartChange" />
           </div>
-          <div class="flex items-center justify-between">
+          <div v-if="!IS_LINUX" class="flex items-center justify-between">
             <span class="text-sm">边缘自动隐藏</span>
             <n-switch v-model:value="edgeHide" />
           </div>
