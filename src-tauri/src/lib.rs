@@ -3,10 +3,56 @@ use tauri::{image::Image, Manager, Emitter};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use std::fs;
+use std::sync::Mutex;
 
 mod commands;
 mod db;
 mod tray;
+
+/// 界面语言。托盘菜单与欢迎便签的文案在 Rust 侧生成，需要知道当前语言。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lang {
+    Zh,
+    En,
+}
+
+impl Default for Lang {
+    // 启动时先按中文建好菜单与欢迎便签，前端挂载后立即用真实语言调用 set_language 覆盖
+    fn default() -> Self {
+        Lang::Zh
+    }
+}
+
+impl Lang {
+    pub fn from_code(code: &str) -> Self {
+        if code == "en" {
+            Lang::En
+        } else {
+            Lang::Zh
+        }
+    }
+
+    pub fn code(self) -> &'static str {
+        match self {
+            Lang::Zh => "zh",
+            Lang::En => "en",
+        }
+    }
+}
+
+// 启动时先按中文建好菜单与欢迎便签，前端挂载后立即用真实语言调用 set_language 覆盖
+#[derive(Default)]
+pub struct AppLang(Mutex<Lang>);
+
+impl AppLang {
+    pub fn get(&self) -> Lang {
+        *self.0.lock().unwrap()
+    }
+
+    pub fn set(&self, lang: Lang) {
+        *self.0.lock().unwrap() = lang;
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct WindowState {
@@ -125,6 +171,31 @@ fn show_editor_with_note(app_handle: &tauri::AppHandle, note_id: &str) {
     }
 }
 
+// 新便签默认色：Linux 的 WebKitGTK 合成不了毛玻璃，玻璃色已从颜色栏移除，取颜色栏第一个实色
+fn default_note_color() -> &'static str {
+    if cfg!(target_os = "linux") {
+        "yellow"
+    } else {
+        "glass"
+    }
+}
+
+// 新建便签并打开编辑窗口：全局快捷键与托盘菜单共用
+pub(crate) fn create_and_open_note(app: &tauri::AppHandle) {
+    let note = {
+        let db = app.state::<db::Database>();
+        match db.create_note(default_note_color(), "") {
+            Ok(note) => note,
+            Err(e) => {
+                println!("create_note failed: {}", e);
+                return;
+            }
+        }
+    };
+    let _ = app.emit("notes-changed", ());
+    show_editor_with_note(app, &note.id);
+}
+
 #[tauri::command]
 fn save_window_state_cmd(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("main") {
@@ -146,6 +217,32 @@ fn set_autostart(app_handle: tauri::AppHandle, enabled: bool) -> Result<(), Stri
     } else {
         autolaunch.disable().map_err(|e| e.to_string())?;
     }
+    // 让托盘菜单里的勾选项跟着变
+    tray::refresh_menu(&app_handle);
+    Ok(())
+}
+
+// 前端（设置 - 通用 / 启动挂载）把语言推给 Rust：托盘菜单在这里重建，欢迎便签在这里换语言。
+// 每个用到文案的组件都会调用，语言没变时直接返回，避免反复重建菜单。
+#[tauri::command]
+fn set_language(app_handle: tauri::AppHandle, lang: String) -> Result<(), String> {
+    let next = Lang::from_code(&lang);
+    let current = app_handle.state::<AppLang>().get();
+    if current == next {
+        return Ok(());
+    }
+    app_handle.state::<AppLang>().set(next);
+
+    if let Some(db) = app_handle.try_state::<db::Database>() {
+        let changed = db
+            .localize_welcome_note(next.code())
+            .map_err(|e| e.to_string())?;
+        // 欢迎便签换了语言，让主窗口重新读一次列表
+        if changed > 0 {
+            let _ = app_handle.emit("notes-changed", ());
+        }
+    }
+    tray::refresh_menu(&app_handle);
     Ok(())
 }
 
@@ -203,12 +300,14 @@ pub fn run() {
             open_editor,
             get_autostart,
             set_autostart,
+            set_language,
             set_editor_visible,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
 
             db::init_db(&app_handle)?;
+            app_handle.manage(AppLang::default());
 
             // 首次运行时植入一条欢迎便签（用户可自行删除，删除后不再重建）
             let welcome_marker = app_handle
@@ -216,19 +315,20 @@ pub fn run() {
                 .app_data_dir()
                 .expect("failed to get app data dir")
                 .join("welcome_note_seeded");
+            let lang = app_handle.state::<AppLang>().get();
             if !welcome_marker.exists() {
                 if let Some(db) = app_handle.try_state::<db::Database>() {
-                    if let Err(e) = db.seed_welcome_note() {
+                    if let Err(e) = db.seed_welcome_note(lang.code(), default_note_color()) {
                         println!("seed welcome note failed: {}", e);
                     }
                 }
                 let _ = fs::write(&welcome_marker, "1");
             }
 
-            // 每次启动都把"未被用户改写"的旧欢迎便签刷新为最新内容（例如新增了功能说明）
+            // 每次启动都把"未被用户改写"的欢迎便签刷新为当前语言的最新文案
             if let Some(db) = app_handle.try_state::<db::Database>() {
-                if let Err(e) = db.refresh_welcome_note() {
-                    println!("refresh welcome note failed: {}", e);
+                if let Err(e) = db.localize_welcome_note(lang.code()) {
+                    println!("localize welcome note failed: {}", e);
                 }
             }
 
@@ -245,14 +345,7 @@ pub fn run() {
                         if event.state != ShortcutState::Pressed {
                             return;
                         }
-                        let db = app.state::<db::Database>();
-                        match db.create_note("glass", "") {
-                            Ok(note) => {
-                                let _ = app.emit("notes-changed", ());
-                                show_editor_with_note(app, &note.id);
-                            }
-                            Err(e) => println!("shortcut create_note failed: {}", e),
-                        }
+                        create_and_open_note(app);
                     },
                 );
 

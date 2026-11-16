@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { darkTheme } from 'naive-ui'
 import type { GlobalThemeOverrides } from 'naive-ui'
 import { getCurrentWindow, PhysicalPosition } from '@tauri-apps/api/window'
@@ -7,6 +7,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { useTheme } from './composables/useTheme'
+import { useI18n, waitLanguage } from './composables/useI18n'
+import { searchableText } from './composables/noteText'
 import { DEFAULT_NOTE_COLOR } from './composables/noteColors'
 import { useNoteStore } from './stores/notes'
 import NoteList from './components/NoteList.vue'
@@ -15,6 +17,7 @@ import WindowResizeHandles from './components/WindowResizeHandles.vue'
 import type { Note } from './types'
 
 const { isDark, mode, cycleTheme } = useTheme()
+const { t } = useI18n()
 const noteStore = useNoteStore()
 
 const showSettings = ref(false)
@@ -60,36 +63,109 @@ function onDragEnd() {
   document.removeEventListener('mouseup', onDragEnd)
 }
 
-const noteCount = computed(() => noteStore.notes.length)
+const totalCount = computed(() => noteStore.notes.length)
 
 // 标题栏主题按钮与「设置 - 主题模式」联动：系统 → 浅色 → 深色 循环
-const MODE_LABELS: Record<string, string> = { light: '浅色', dark: '深色', system: '系统' }
-const themeTitle = computed(() => `主题模式：${MODE_LABELS[mode.value]}（点击切换）`)
+const themeTitle = computed(() => t('app.themeTitle', { label: t(`theme.${mode.value}`) }))
 const themeIcon = computed(() => {
   if (mode.value === 'system') return 'i-lucide-monitor'
   return mode.value === 'dark' ? 'i-lucide-moon' : 'i-lucide-sun'
 })
 
 // 置顶便签排到最前，其余保持数据库返回顺序（updated_at DESC）
-const visibleNotes = computed(() => {
+const sortedNotes = computed(() => {
   return [...noteStore.notes].sort((a, b) => Number(b.isPinned) - Number(a.isPinned))
 })
+
+// ===== 搜索：纯视图过滤，不改任何数据 =====
+const searchOpen = ref(false)
+const query = ref('')
+const searchInputRef = ref<{ focus: () => void } | null>(null)
+
+const isSearching = computed(() => searchOpen.value && query.value.trim() !== '')
+
+const visibleNotes = computed(() => {
+  const q = query.value.trim().toLowerCase()
+  if (!q) return sortedNotes.value
+  return sortedNotes.value.filter(note => searchableText(note.title, note.content).includes(q))
+})
+
+function toggleSearch() {
+  searchOpen.value = !searchOpen.value
+  if (searchOpen.value) {
+    nextTick(() => searchInputRef.value?.focus())
+  } else {
+    query.value = ''
+  }
+}
+
+function clearSearch() {
+  query.value = ''
+  searchInputRef.value?.focus()
+}
+
+// ===== 批量删除（多选模式）=====
+const selectedIds = ref<string[]>([])
+const selectMode = computed(() => selectedIds.value.length > 0)
+const allSelected = computed(() =>
+  visibleNotes.value.length > 0 && visibleNotes.value.every(note => selectedIds.value.includes(note.id))
+)
+
+function toggleSelect(id: string) {
+  const index = selectedIds.value.indexOf(id)
+  if (index === -1) selectedIds.value.push(id)
+  else selectedIds.value.splice(index, 1)
+}
+
+// 全选只作用于当前可见（过滤后）的便签
+function toggleSelectAll() {
+  selectedIds.value = allSelected.value ? [] : visibleNotes.value.map(note => note.id)
+}
+
+async function deleteSelected() {
+  const ids = [...selectedIds.value]
+  for (const id of ids) {
+    await noteStore.deleteNote(id)
+  }
+  selectedIds.value = []
+}
+
+function handleGlobalKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && searchOpen.value) {
+    e.preventDefault()
+    searchOpen.value = false
+    query.value = ''
+  }
+}
+
+// 窗口隐藏（收进托盘）后，搜索与多选状态都不保留
+function handleVisibilityChange() {
+  if (document.visibilityState !== 'hidden') return
+  searchOpen.value = false
+  query.value = ''
+  selectedIds.value = []
+}
 
 let unlistenNotesChanged: UnlistenFn | null = null
 
 const loading = ref(true)
 
 onMounted(async () => {
+  await waitLanguage()
   await noteStore.loadNotes()
   loading.value = false
   // 全局快捷键在后端新建便签后刷新列表
   unlistenNotesChanged = await listen('notes-changed', () => {
     noteStore.loadNotes()
   })
+  document.addEventListener('keydown', handleGlobalKeydown)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   if (unlistenNotesChanged) unlistenNotesChanged()
+  document.removeEventListener('keydown', handleGlobalKeydown)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 const themeOverrides: GlobalThemeOverrides = {
@@ -186,7 +262,11 @@ async function handleNewNote() {
 }
 
 async function handleClickNote(note: Note) {
-  console.log('handleClickNote called with noteId:', note.id)
+  // 多选模式下点击卡片只切换勾选，不打开编辑窗
+  if (selectMode.value) {
+    toggleSelect(note.id)
+    return
+  }
   
   try {
     await invoke('open_editor', { noteId: note.id })
@@ -224,25 +304,69 @@ async function handleClose() {
     <div class="h-screen flex flex-col bg-background text-foreground font-ui dark:bg-[#1C1917] dark:text-[#E7E0CC]" style="border-radius: 10px; overflow: hidden;">
       <!-- Title Bar -->
       <header class="titlebar h-10 flex items-center px-3 gap-2 bg-surface border-b border-border flex-shrink-0 select-none dark:bg-[#292524] dark:border-[#44403C]" @mousedown="startDragging">
-        <!-- Drag Region: Logo + Title -->
-        <div class="flex items-center gap-2 flex-1 drag-region">
-          <img src="/src/assets/logo.png" class="w-5 h-5 rounded-md pointer-events-none" alt="Memo" />
-          <span class="text-sm font-semibold tracking-tight pointer-events-none">Memo</span>
-        </div>
+        <!-- 多选态：顶栏整体替换为批量操作 -->
+        <template v-if="selectMode">
+          <div class="flex items-center gap-2 flex-1">
+            <span class="text-sm font-semibold">{{ t('batch.selected', { count: selectedIds.length }) }}</span>
+          </div>
+          <div class="flex items-center gap-2" style="-webkit-app-region: no-drag; pointer-events: auto;">
+            <n-button size="tiny" @click="toggleSelectAll">{{ t('batch.selectAll') }}</n-button>
+            <n-popconfirm
+              :positive-text="t('common.confirm')"
+              :negative-text="t('common.cancel')"
+              @positive-click="deleteSelected"
+            >
+              <template #trigger>
+                <n-button size="tiny" type="error">{{ t('common.delete') }}</n-button>
+              </template>
+              {{ t('batch.deleteConfirm', { count: selectedIds.length }) }}
+            </n-popconfirm>
+            <n-button size="tiny" @click="selectedIds = []">{{ t('common.cancel') }}</n-button>
+          </div>
+        </template>
 
-        <!-- Action Buttons (outside drag region) -->
-        <div class="flex items-center gap-2" style="-webkit-app-region: no-drag; pointer-events: auto;">
-          <n-button quaternary circle size="tiny" @click="cycleTheme" :title="themeTitle" style="pointer-events: auto;">
-            <i :class="themeIcon" class="w-4 h-4" />
-          </n-button>
-          <n-button quaternary circle size="tiny" @click="showSettings = true" title="设置" style="pointer-events: auto;">
-            <i class="i-lucide-settings w-4 h-4" />
-          </n-button>
-          <n-button quaternary circle size="tiny" class="close-btn" title="关闭" @click="handleClose" style="pointer-events: auto;">
-            <i class="i-lucide-x w-4 h-4" />
-          </n-button>
-        </div>
+        <template v-else>
+          <!-- Drag Region: Logo + Title -->
+          <div class="flex items-center gap-2 flex-1 drag-region">
+            <img src="/src/assets/logo.png" class="w-5 h-5 rounded-md pointer-events-none" alt="Memo" />
+            <span class="text-sm font-semibold tracking-tight pointer-events-none">Memo</span>
+          </div>
+
+          <!-- Action Buttons (outside drag region) -->
+          <div class="flex items-center gap-2" style="-webkit-app-region: no-drag; pointer-events: auto;">
+            <n-button quaternary circle size="tiny" :title="t('app.search')" @click="toggleSearch" style="pointer-events: auto;">
+              <i class="i-lucide-search w-4 h-4" />
+            </n-button>
+            <n-button quaternary circle size="tiny" @click="cycleTheme" :title="themeTitle" style="pointer-events: auto;">
+              <i :class="themeIcon" class="w-4 h-4" />
+            </n-button>
+            <n-button quaternary circle size="tiny" @click="showSettings = true" :title="t('common.settings')" style="pointer-events: auto;">
+              <i class="i-lucide-settings w-4 h-4" />
+            </n-button>
+            <n-button quaternary circle size="tiny" class="close-btn" :title="t('common.close')" @click="handleClose" style="pointer-events: auto;">
+              <i class="i-lucide-x w-4 h-4" />
+            </n-button>
+          </div>
+        </template>
       </header>
+
+      <!-- Search Bar -->
+      <div v-if="searchOpen && !selectMode" class="flex items-center gap-2 px-4 pt-3 flex-shrink-0">
+        <n-input
+          ref="searchInputRef"
+          v-model:value="query"
+          size="small"
+          :placeholder="t('app.searchPlaceholder')"
+          clearable
+        >
+          <template #prefix>
+            <i class="i-lucide-search w-3.5 h-3.5 opacity-60" />
+          </template>
+        </n-input>
+        <span class="text-xs opacity-60 whitespace-nowrap">
+          {{ t('app.searchMatch', { matched: visibleNotes.length, total: totalCount }) }}
+        </span>
+      </div>
 
       <!-- Main Content -->
       <main class="flex-1 px-4 py-4 w-full overflow-y-auto">
@@ -251,21 +375,34 @@ async function handleClose() {
         </div>
         <template v-else>
           <div class="flex items-center gap-2 mb-4">
-            <h1 class="text-base font-bold">全部便签</h1>
-            <n-tag round size="small" :bordered="false" type="warning">{{ noteCount }}</n-tag>
+            <h1 class="text-base font-bold">{{ t('app.allNotes') }}</h1>
+            <n-tag round size="small" :bordered="false" type="warning">{{ totalCount }}</n-tag>
           </div>
 
           <NoteList
+            v-if="visibleNotes.length > 0 || !isSearching"
             :notes="visibleNotes"
+            :select-mode="selectMode"
+            :selected-ids="selectedIds"
             @click-note="handleClickNote"
             @pin-note="handlePinNote"
             @delete-note="handleDeleteNote"
+            @toggle-select="toggleSelect"
           />
+          <n-empty v-else :description="t('app.searchEmpty')" class="py-16">
+            <template #icon>
+              <i class="i-lucide-search-x w-12 h-12 text-muted-fg opacity-40" />
+            </template>
+            <template #default>
+              <n-button size="tiny" @click="clearSearch">{{ t('app.searchClear') }}</n-button>
+            </template>
+          </n-empty>
         </template>
       </main>
 
       <!-- FAB -->
       <n-button
+        v-if="!selectMode"
         type="warning"
         strong
         round
@@ -273,7 +410,7 @@ async function handleClose() {
         class="fab-btn"
         @mousedown.stop
         @click.stop="handleNewNote"
-        title="新建便签"
+        :title="t('app.newNote')"
       >
         <template #icon>
           <i class="i-lucide-plus w-5 h-5" />

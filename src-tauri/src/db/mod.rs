@@ -49,12 +49,26 @@ pub struct Database {
     conn: Mutex<Connection>,
 }
 
-// 首次安装时植入的欢迎便签内容（富文本 HTML，与编辑器格式一致）
-const WELCOME_CONTENT: &str = r#"<p><strong>欢迎使用 Memo</strong></p><p>Memo 是一款轻量桌面便签应用，帮你随手记录灵感与待办事项。</p><p><strong>主要功能</strong></p><ul><li>富文本编辑：加粗、斜体、列表、复选框，支持拖拽插入图片并缩放</li><li>自动识别网址、邮箱、手机号并彩色高亮，点击即可打开</li><li>多色便签与毛玻璃主题，支持亮色 / 暗色模式</li><li>便签窗口可置顶固定，自动记忆位置与大小</li><li>开机自启动，并恢复上次打开的便签</li><li>系统托盘：打开主窗口或退出应用</li><li>边缘自动隐藏：在设置中开启后，便签贴屏幕左 / 右 / 上边缘时会收起为窄条，鼠标悬停窄条即可唤回，移开后自动收回</li></ul><p><strong>使用方法</strong></p><ul><li>点击右下角 + 按钮新建便签</li><li>点击任意便签打开独立编辑窗口</li><li>鼠标悬停便签卡片，可置顶或删除</li><li>关闭编辑窗口即隐藏，内容不会丢失</li></ul><p><strong>快捷键</strong></p><ul><li>Ctrl+Shift+N：新建便签</li><li>Ctrl+Shift+M：显示 / 隐藏主窗口</li></ul><p>这条便签可以随时删除，祝你使用愉快！</p>"#;
+// 首次安装时植入的欢迎便签（富文本 HTML，与编辑器格式一致）。
+// 语言由前端启动时通过 set_language 告知：欢迎文案属于内置文案，可以本地化；
+// 用户改写过的便签一律不动（判定条件见 localize_welcome_note）。
+pub const WELCOME_TITLE_ZH: &str = "欢迎使用 Memo";
+pub const WELCOME_TITLE_EN: &str = "Welcome to Memo";
+const WELCOME_CONTENT_ZH: &str = r#"<p><strong>欢迎使用 Memo</strong></p><p>Memo 是一款轻量桌面便签应用，帮你随手记录灵感与待办事项。</p><p><strong>主要功能</strong></p><ul><li>富文本编辑：加粗、斜体、列表、复选框，支持拖拽插入图片并缩放</li><li>自动识别网址、邮箱、手机号并彩色高亮，点击即可打开</li><li>多色便签与毛玻璃主题，支持浅色 / 深色模式</li><li>便签窗口可置顶固定，自动记忆位置与大小</li><li>主窗口搜索：按标题与正文纯文本即时过滤</li><li>批量删除：卡片左上角勾选后可一次删除多条</li><li>开机自启动，并恢复上次打开的便签</li><li>系统托盘：新建便签、打开主窗口、开关开机自启、退出应用</li><li>界面语言支持简体中文 / English，可在「设置 - 通用」切换</li><li>边缘自动隐藏：在设置中开启后，便签贴屏幕左 / 右 / 上边缘时会收起为窄条，鼠标悬停窄条即可唤回，移开后自动收回</li></ul><p><strong>使用方法</strong></p><ul><li>点击右下角 + 按钮新建便签</li><li>点击任意便签打开独立编辑窗口</li><li>鼠标悬停便签卡片，可置顶或删除</li><li>关闭编辑窗口即隐藏，内容不会丢失</li></ul><p><strong>快捷键</strong></p><ul><li>Ctrl+Shift+N：新建便签</li><li>Ctrl+Shift+M：显示 / 隐藏主窗口</li><li>Ctrl+S：立即保存</li><li>Ctrl+W：关闭当前编辑窗</li><li>Esc：收起搜索</li></ul><p>这条便签可以随时删除，祝你使用愉快！</p>"#;
+const WELCOME_CONTENT_EN: &str = r#"<p><strong>Welcome to Memo</strong></p><p>Memo is a lightweight desktop sticky-note app for capturing ideas and to-dos as they come.</p><p><strong>What it does</strong></p><ul><li>Rich text: bold, italic, lists, checkboxes; drop or pick images and resize them</li><li>URLs, emails and phone numbers are highlighted automatically and open on click</li><li>Several note colors plus a frosted-glass theme, with light / dark mode</li><li>Notes can stay on top and remember their position and size</li><li>Search in the main window filters titles and plain text as you type</li><li>Batch delete: tick the checkbox on cards to remove several at once</li><li>Launch at startup and restore the note you had open</li><li>System tray: new note, open main window, toggle startup, quit</li><li>Interface languages: 简体中文 / English, switchable in Settings - General</li><li>Edge auto-hide: once enabled in Settings, a note docked to the left / right / top screen edge collapses into a thin bar; hover the bar to bring it back, and it retracts when you leave</li></ul><p><strong>How to use</strong></p><ul><li>Click the + button in the corner to create a note</li><li>Click any note to open its own editor window</li><li>Hover a card to pin or delete it</li><li>Closing the editor only hides it; nothing is lost</li></ul><p><strong>Shortcuts</strong></p><ul><li>Ctrl+Shift+N: new note</li><li>Ctrl+Shift+M: show / hide the main window</li><li>Ctrl+S: save now</li><li>Ctrl+W: close the current note window</li><li>Esc: close search</li></ul><p>Delete this note whenever you like. Enjoy!</p>"#;
 
-// 上一版欢迎便签内容：仅用于把"未被用户改写"的旧欢迎便签原地刷新为最新版，
-// 精确匹配可避免覆盖用户自行编辑过的便签。升级欢迎内容时，把旧的 WELCOME_CONTENT 挪到这里。
-const WELCOME_CONTENT_PREV: &str = r#"<p><strong>欢迎使用 Memo</strong></p><p>Memo 是一款轻量桌面便签应用，帮你随手记录灵感与待办事项。</p><p><strong>主要功能</strong></p><ul><li>富文本编辑：加粗、斜体、列表、复选框，支持拖拽插入图片并缩放</li><li>自动识别网址、邮箱、手机号并彩色高亮，点击即可打开</li><li>多色便签与毛玻璃主题，支持亮色 / 暗色模式</li><li>便签窗口可置顶固定，自动记忆位置与大小</li><li>开机自启动，并恢复上次打开的便签</li><li>系统托盘：打开主窗口或退出应用</li></ul><p><strong>使用方法</strong></p><ul><li>点击右下角 + 按钮新建便签</li><li>点击任意便签打开独立编辑窗口</li><li>鼠标悬停便签卡片，可置顶或删除</li><li>关闭编辑窗口即隐藏，内容不会丢失</li></ul><p><strong>快捷键</strong></p><ul><li>Ctrl+Shift+N：新建便签</li><li>Ctrl+Shift+M：显示 / 隐藏主窗口</li></ul><p>这条便签可以随时删除，祝你使用愉快！</p>"#;
+// 上一版欢迎内容：仅用于把"未被用户改写"的旧欢迎便签原地刷新为最新版，
+// 精确匹配可避免覆盖用户自行编辑过的便签。升级欢迎内容时，把旧的中文版挪到这里。
+const WELCOME_CONTENT_PREV: &str = r#"<p><strong>欢迎使用 Memo</strong></p><p>Memo 是一款轻量桌面便签应用，帮你随手记录灵感与待办事项。</p><p><strong>主要功能</strong></p><ul><li>富文本编辑：加粗、斜体、列表、复选框，支持拖拽插入图片并缩放</li><li>自动识别网址、邮箱、手机号并彩色高亮，点击即可打开</li><li>多色便签与毛玻璃主题，支持亮色 / 暗色模式</li><li>便签窗口可置顶固定，自动记忆位置与大小</li><li>开机自启动，并恢复上次打开的便签</li><li>系统托盘：打开主窗口或退出应用</li><li>边缘自动隐藏：在设置中开启后，便签贴屏幕左 / 右 / 上边缘时会收起为窄条，鼠标悬停窄条即可唤回，移开后自动收回</li></ul><p><strong>使用方法</strong></p><ul><li>点击右下角 + 按钮新建便签</li><li>点击任意便签打开独立编辑窗口</li><li>鼠标悬停便签卡片，可置顶或删除</li><li>关闭编辑窗口即隐藏，内容不会丢失</li></ul><p><strong>快捷键</strong></p><ul><li>Ctrl+Shift+N：新建便签</li><li>Ctrl+Shift+M：显示 / 隐藏主窗口</li></ul><p>这条便签可以随时删除，祝你使用愉快！</p>"#;
+
+pub fn welcome_text(lang: &str) -> (&'static str, &'static str) {
+    if lang == "en" {
+        (WELCOME_TITLE_EN, WELCOME_CONTENT_EN)
+    } else {
+        (WELCOME_TITLE_ZH, WELCOME_CONTENT_ZH)
+    }
+}
+
 
 impl Database {
     pub fn new(db_path: &str) -> Result<Self> {
@@ -111,26 +125,38 @@ impl Database {
         })
     }
 
-    pub fn seed_welcome_note(&self) -> Result<()> {
+    pub fn seed_welcome_note(&self, lang: &str, color: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
+        let (title, content) = welcome_text(lang);
         conn.execute(
             "INSERT INTO notes (id, title, content, color, is_pinned, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![id, "欢迎使用 Memo", WELCOME_CONTENT, "glass", 1, now, now],
+            params![id, title, content, color, 1, now, now],
         )?;
         Ok(())
     }
 
-    // 把内容仍与上一版欢迎便签完全一致（即用户未改写）的便签原地刷新为最新内容。
-    // 精确匹配旧内容可避免覆盖用户自行编辑过的便签。
-    pub fn refresh_welcome_note(&self) -> Result<()> {
+    // 把仍是欢迎便签（标题与内容都未被用户改写）的行刷新成当前语言的最新文案，
+    // 顺带完成旧版内容升级。匹配条件限定在内置文案集合内，用户编辑过的便签不会命中；
+    // 有意不碰 updated_at，切语言不该打乱便签排序。
+    pub fn localize_welcome_note(&self, lang: &str) -> Result<usize> {
         let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "UPDATE notes SET content = ?1 WHERE content = ?2",
-            params![WELCOME_CONTENT, WELCOME_CONTENT_PREV],
+        let (title, content) = welcome_text(lang);
+        let changed = conn.execute(
+            "UPDATE notes SET title = ?1, content = ?2 \
+             WHERE content IN (?3, ?4, ?5) AND title IN (?6, ?7)",
+            params![
+                title,
+                content,
+                WELCOME_CONTENT_ZH,
+                WELCOME_CONTENT_EN,
+                WELCOME_CONTENT_PREV,
+                WELCOME_TITLE_ZH,
+                WELCOME_TITLE_EN,
+            ],
         )?;
-        Ok(())
+        Ok(changed)
     }
 
     pub fn get_notes(&self) -> Result<Vec<NoteRow>> {
@@ -280,6 +306,46 @@ mod tests {
             .update_note("missing", None, Some("x"), None, None, None, None, None, None, None, None, None)
             .unwrap_err();
         assert!(matches!(err, rusqlite::Error::QueryReturnedNoRows));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn localize_welcome_note_only_touches_untouched_welcome() {
+        let (db, path) = temp_db();
+        db.seed_welcome_note("zh", "glass").unwrap();
+        let edited = db.create_note("yellow", WELCOME_CONTENT_ZH).unwrap();
+        db.update_note(&edited.id, Some("我的便签"), None, None, None, None, None, None, None, None, None, None)
+            .unwrap();
+
+        db.localize_welcome_note("en").unwrap();
+
+        let notes = db.get_notes().unwrap();
+        let welcome = notes.iter().find(|n| n.title == WELCOME_TITLE_EN).unwrap();
+        assert_eq!(welcome.content, WELCOME_CONTENT_EN);
+        // 用户改过标题的便签保持原样
+        assert!(notes.iter().any(|n| n.id == edited.id && n.title == "我的便签"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn localize_welcome_note_upgrades_legacy_content() {
+        let (db, path) = temp_db();
+        db.create_note("glass", "占位").unwrap();
+        let legacy = db.get_notes().unwrap().remove(0);
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE notes SET title = ?1, content = ?2 WHERE id = ?3",
+                params![WELCOME_TITLE_ZH, WELCOME_CONTENT_PREV, legacy.id],
+            )
+            .unwrap();
+        }
+
+        db.localize_welcome_note("en").unwrap();
+
+        let note = db.get_note(&legacy.id).unwrap();
+        assert_eq!(note.title, WELCOME_TITLE_EN);
+        assert_eq!(note.content, WELCOME_CONTENT_EN);
         let _ = std::fs::remove_file(path);
     }
 }

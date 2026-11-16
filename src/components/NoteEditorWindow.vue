@@ -7,6 +7,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { emit, listen } from '@tauri-apps/api/event'
 import { useTheme } from '@/composables/useTheme'
+import { useI18n } from '@/composables/useI18n'
 import { IS_LINUX } from '@/composables/usePlatform'
 import { NOTE_PALETTE, DEFAULT_NOTE_COLOR, resolveNoteColor } from '@/composables/noteColors'
 import WindowResizeHandles from '@/components/WindowResizeHandles.vue'
@@ -14,6 +15,7 @@ import type { Note, NoteColor } from '@/types'
 import { NOTE_COLORS } from '@/types'
 
 const { isDark } = useTheme()
+const { t } = useI18n()
 const appWindow = getCurrentWindow()
 
 const note = ref<Note | null>(null)
@@ -278,6 +280,7 @@ onMounted(async () => {
   // 边缘隐藏开关：读取设置并监听主窗口的变更（同源跨窗口 storage 事件）
   edgeHideEnabled.value = readEdgeHideSetting()
   window.addEventListener('storage', handleStorageChange)
+  window.addEventListener('keydown', handleShortcut)
 
   // 监听 open-note 事件
   unlistenOpenNote = await listen<string>('open-note', async (event) => {
@@ -381,6 +384,7 @@ onUnmounted(() => {
   clearRetryTimer()
   cancelAnimationFrame(animFrame)
   window.removeEventListener('storage', handleStorageChange)
+  window.removeEventListener('keydown', handleShortcut)
 })
 
 async function saveWindowGeometry() {
@@ -716,9 +720,7 @@ async function applyRecoveryIfNeeded() {
 }
 
 const saveFailText = computed(() =>
-  savedToFallback.value
-    ? '保存失败，内容已暂存到临时文件，正在自动重试'
-    : '保存失败，内容仅存在于当前窗口，正在自动重试',
+  t(savedToFallback.value ? 'editor.saveFailedStaged' : 'editor.saveFailedMemory'),
 )
 
 // ===== 自动识别网址 / 邮箱 / 手机号并高亮 =====
@@ -1062,6 +1064,19 @@ async function togglePin() {
     .catch(console.error)
 }
 
+// 窗口内快捷键：Ctrl+S 立即保存（等待写入结果）、Ctrl+W 关窗
+async function handleShortcut(e: KeyboardEvent) {
+  if (!e.ctrlKey || e.altKey || e.metaKey) return
+  const key = e.key.toLowerCase()
+  if (key === 's' && !e.shiftKey) {
+    e.preventDefault()
+    await drainPendingSave()
+  } else if (key === 'w' && !e.shiftKey) {
+    e.preventDefault()
+    await handleClose()
+  }
+}
+
 const colorEntries = NOTE_PALETTE.map((key) => [key, NOTE_COLORS[key]] as const)
 </script>
 
@@ -1094,12 +1109,12 @@ const colorEntries = NOTE_PALETTE.map((key) => [key, NOTE_COLORS[key]] as const)
       <div v-if="saveFailed" class="save-notice is-error" :title="saveError">
         <i class="i-lucide-triangle-alert w-3.5 h-3.5 shrink-0" />
         <span class="save-notice-text">{{ saveFailText }}</span>
-        <n-button text size="tiny" @click="retryNow">立即重试</n-button>
+        <n-button text size="tiny" @click="retryNow">{{ t('editor.retryNow') }}</n-button>
       </div>
       <div v-else-if="recoveredHint" class="save-notice is-info">
         <i class="i-lucide-circle-check w-3.5 h-3.5 shrink-0" />
-        <span class="save-notice-text">已恢复上次未能保存的内容</span>
-        <n-button text size="tiny" title="知道了" @click="recoveredHint = false">知道了</n-button>
+        <span class="save-notice-text">{{ t('editor.recovered') }}</span>
+        <n-button text size="tiny" :title="t('editor.gotIt')" @click="recoveredHint = false">{{ t('editor.gotIt') }}</n-button>
       </div>
 
       <!-- Title Bar / Drag Region -->
@@ -1119,10 +1134,10 @@ const colorEntries = NOTE_PALETTE.map((key) => [key, NOTE_COLORS[key]] as const)
         </div>
         <div class="flex-1" />
         <div class="close-btn-container no-drag">
-          <n-button text size="tiny" :title="isPinned ? '取消置顶' : '固定在最上层'" @mousedown.prevent="togglePin">
+          <n-button text size="tiny" :title="isPinned ? t('editor.unpin') : t('editor.pin')" @mousedown.prevent="togglePin">
             <i class="i-lucide-pin w-5 h-5" :style="{ color: isPinned ? '#D97706' : undefined }" />
           </n-button>
-          <n-button text size="tiny" title="关闭" @mousedown.prevent="handleClose">
+          <n-button text size="tiny" :title="t('common.close')" @mousedown.prevent="handleClose">
             <i class="i-lucide-x w-5 h-5" />
           </n-button>
         </div>
@@ -1145,7 +1160,7 @@ const colorEntries = NOTE_PALETTE.map((key) => [key, NOTE_COLORS[key]] as const)
         @dragover="handleDragOver"
         @dragenter="handleDragEnter"
         @dragleave="handleDragLeave"
-        data-placeholder="在这里输入内容..."
+        :data-placeholder="t('editor.placeholder')"
       />
 
       <!-- Image Resize Handle -->
@@ -1158,30 +1173,30 @@ const colorEntries = NOTE_PALETTE.map((key) => [key, NOTE_COLORS[key]] as const)
 
       <!-- Formatting Toolbar (visible on focus) -->
       <div class="toolbar" :class="{ 'toolbar-visible': isFocused }">
-        <n-button text size="small" title="加粗" @mousedown.prevent="execCmd('bold')">
+        <n-button text size="small" :title="t('editor.bold')" @mousedown.prevent="execCmd('bold')">
           <i class="i-lucide-bold w-5 h-5" />
         </n-button>
-        <n-button text size="small" title="斜体" @mousedown.prevent="execCmd('italic')">
+        <n-button text size="small" :title="t('editor.italic')" @mousedown.prevent="execCmd('italic')">
           <i class="i-lucide-italic w-5 h-5" />
         </n-button>
-        <n-button text size="small" title="下划线" @mousedown.prevent="execCmd('underline')">
+        <n-button text size="small" :title="t('editor.underline')" @mousedown.prevent="execCmd('underline')">
           <i class="i-lucide-underline w-5 h-5" />
         </n-button>
-        <n-button text size="small" title="删除线" @mousedown.prevent="execCmd('strikeThrough')">
+        <n-button text size="small" :title="t('editor.strike')" @mousedown.prevent="execCmd('strikeThrough')">
           <i class="i-lucide-strikethrough w-5 h-5" />
         </n-button>
         <div class="toolbar-divider" />
-        <n-button text size="small" title="无序列表" @mousedown.prevent="execCmd('insertUnorderedList')">
+        <n-button text size="small" :title="t('editor.bulletList')" @mousedown.prevent="execCmd('insertUnorderedList')">
           <i class="i-lucide-list w-5 h-5" />
         </n-button>
-        <n-button text size="small" title="有序列表" @mousedown.prevent="execCmd('insertOrderedList')">
+        <n-button text size="small" :title="t('editor.numberList')" @mousedown.prevent="execCmd('insertOrderedList')">
           <i class="i-lucide-list-ordered w-5 h-5" />
         </n-button>
-        <n-button text size="small" title="复选框" @mousedown.prevent="insertCheckbox">
+        <n-button text size="small" :title="t('editor.checkbox')" @mousedown.prevent="insertCheckbox">
           <i class="i-lucide-check-square w-5 h-5" />
         </n-button>
         <div class="toolbar-divider" />
-        <n-button text size="small" title="插入图片" @mousedown.prevent="insertImage">
+        <n-button text size="small" :title="t('editor.image')" @mousedown.prevent="insertImage">
           <i class="i-lucide-image w-5 h-5" />
         </n-button>
       </div>
@@ -1455,8 +1470,10 @@ const colorEntries = NOTE_PALETTE.map((key) => [key, NOTE_COLORS[key]] as const)
   word-break: break-word;
 }
 
-/* Naive UI style checkbox */
-.n-checkbox-wrapper {
+/* 仿 Naive UI 的复选框，只作用于正文里的 task-item。
+   类名与 Naive UI 的 .n-checkbox-box / .n-checkbox-icon 相同，而主窗口也会加载本组件的样式，
+   少了 .editor-content 前缀就会覆盖主窗口卡片上真正的 n-checkbox。 */
+.editor-content .n-checkbox-wrapper {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -1467,14 +1484,14 @@ const colorEntries = NOTE_PALETTE.map((key) => [key, NOTE_COLORS[key]] as const)
   height: 16px;
 }
 
-.n-checkbox-input {
+.editor-content .n-checkbox-input {
   position: absolute;
   opacity: 0;
   width: 0;
   height: 0;
 }
 
-.n-checkbox-box {
+.editor-content .n-checkbox-box {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1486,32 +1503,32 @@ const colorEntries = NOTE_PALETTE.map((key) => [key, NOTE_COLORS[key]] as const)
   transition: all 0.2s ease;
 }
 
-.n-checkbox-input:checked + .n-checkbox-box {
+.editor-content .n-checkbox-input:checked + .n-checkbox-box {
   background: #D97706;
   border-color: #D97706;
 }
 
-.n-checkbox-input:hover + .n-checkbox-box {
+.editor-content .n-checkbox-input:hover + .n-checkbox-box {
   border-color: #D97706;
 }
 
-.n-checkbox-input:focus-visible + .n-checkbox-box {
+.editor-content .n-checkbox-input:focus-visible + .n-checkbox-box {
   box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.2);
 }
 
-.n-checkbox-icon {
+.editor-content .n-checkbox-icon {
   display: none;
   width: 8px;
   height: 8px;
 }
 
-.n-checkbox-input:checked + .n-checkbox-box .n-checkbox-icon {
+.editor-content .n-checkbox-input:checked + .n-checkbox-box .n-checkbox-icon {
   display: block;
   background: white;
   clip-path: polygon(14% 44%, 0 65%, 43% 100%, 100% 16%, 80% 0%, 39% 68%);
 }
 
-.dark .n-checkbox-box {
+.dark .editor-content .n-checkbox-box {
   border-color: #4a4a4a;
   background: #2a2a2a;
 }

@@ -1,7 +1,9 @@
 import { ref, onUnmounted } from 'vue'
 import type { Note } from '@/types'
+import { useI18n } from './useI18n'
 
 export function useNote(_note: () => Note | null) {
+  const { t, lang } = useI18n()
   const saveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
   const isSaving = ref(false)
 
@@ -22,12 +24,12 @@ export function useNote(_note: () => Note | null) {
     const diffHour = Math.floor(diffMs / 3600000)
     const diffDay = Math.floor(diffMs / 86400000)
 
-    if (diffMin < 1) return '刚刚'
-    if (diffMin < 60) return `${diffMin} 分钟前`
-    if (diffHour < 24) return `${diffHour} 小时前`
-    if (diffDay < 7) return `${diffDay} 天前`
+    if (diffMin < 1) return t('time.justNow')
+    if (diffMin < 60) return t('time.minutesAgo', { count: diffMin })
+    if (diffHour < 24) return t('time.hoursAgo', { count: diffHour })
+    if (diffDay < 7) return t('time.daysAgo', { count: diffDay })
 
-    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+    return date.toLocaleDateString(lang.value === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })
   }
 
   onUnmounted(() => {
