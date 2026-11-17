@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
   "productName": "Memo",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "identifier": "com.memo.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -53,6 +53,8 @@
   },
   "bundle": {
     "targets": ["nsis"],
+    "shortDescription": "轻量桌面便签应用",
+    "longDescription": "Memo 是一款轻量桌面便签应用，帮你随手记录灵感与待办事项。\n支持富文本编辑、便签配色、搜索与批量删除、边缘自动隐藏、全局快捷键与中英双语界面。\n数据保存在本地 SQLite 数据库中，不联网、不上传。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

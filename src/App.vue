@@ -7,6 +7,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { useTheme } from './composables/useTheme'
+import { IS_LINUX } from './composables/usePlatform'
 import { useI18n, waitLanguage } from './composables/useI18n'
 import { searchableText } from './composables/noteText'
 import { DEFAULT_NOTE_COLOR } from './composables/noteColors'
@@ -301,7 +302,7 @@ async function handleClose() {
     :theme-overrides="isDark ? darkThemeOverrides : themeOverrides"
     class="h-screen"
   >
-    <div class="h-screen flex flex-col bg-background text-foreground font-ui dark:bg-[#1C1917] dark:text-[#E7E0CC]" style="border-radius: 10px; overflow: hidden;">
+    <div class="h-screen flex flex-col bg-background text-foreground font-ui dark:bg-[#1C1917] dark:text-[#E7E0CC]" :style="IS_LINUX ? 'overflow: hidden;' : 'border-radius: 10px; overflow: hidden;'">
       <!-- Title Bar -->
       <header class="titlebar h-10 flex items-center px-3 gap-2 bg-surface border-b border-border flex-shrink-0 select-none dark:bg-[#292524] dark:border-[#44403C]" @mousedown="startDragging">
         <!-- 多选态：顶栏整体替换为批量操作 -->

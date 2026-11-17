@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { darkTheme } from 'naive-ui'
 import type { GlobalThemeOverrides } from 'naive-ui'
-import { getCurrentWindow, currentMonitor, PhysicalSize, PhysicalPosition } from '@tauri-apps/api/window'
+import { getCurrentWindow, currentMonitor, availableMonitors, PhysicalSize, PhysicalPosition } from '@tauri-apps/api/window'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { emit, listen } from '@tauri-apps/api/event'
@@ -98,10 +98,31 @@ async function detectSnapEdge(): Promise<SnapEdge | null> {
   const dRight = mRight - (pos.x + size.width)
   let best: SnapEdge | null = null
   let bestDist = Infinity
-  if (dTop <= trigger && dTop < bestDist) { best = 'top'; bestDist = dTop }
-  if (dLeft <= trigger && dLeft < bestDist) { best = 'left'; bestDist = dLeft }
-  if (dRight <= trigger && dRight < bestDist) { best = 'right'; bestDist = dRight }
+  // 距离为负说明窗口已经越出显示器（多屏坐标漂移、存档位置超出虚拟桌面），那不是"贴边"，
+  // 当成贴边会立刻把窗口推出屏幕，便签看起来就像打不开。
+  if (dTop >= 0 && dTop <= trigger && dTop < bestDist) { best = 'top'; bestDist = dTop }
+  if (dLeft >= 0 && dLeft <= trigger && dLeft < bestDist) { best = 'left'; bestDist = dLeft }
+  if (dRight >= 0 && dRight <= trigger && dRight < bestDist) { best = 'right'; bestDist = dRight }
   return best
+}
+
+// 把存档坐标夹回当前显示器可见区域，返回修正后的物理坐标
+async function clampIntoMonitor(x: number, y: number) {
+  const monitors = await availableMonitors()
+  if (!monitors.length) return { x, y }
+  const size = await appWindow.outerSize()
+  const cx = x + size.width / 2
+  const cy = y + size.height / 2
+  const monitor = monitors.find(m =>
+    cx >= m.position.x && cx < m.position.x + m.size.width &&
+    cy >= m.position.y && cy < m.position.y + m.size.height
+  ) ?? monitors[0]
+  const minX = monitor.position.x
+  const minY = monitor.position.y
+  // 窗口比该屏还大时取下限，保证标题栏至少留在屏内
+  const maxX = Math.max(minX, minX + monitor.size.width - size.width)
+  const maxY = Math.max(minY, minY + monitor.size.height - size.height)
+  return { x: Math.min(Math.max(x, minX), maxX), y: Math.min(Math.max(y, minY), maxY) }
 }
 
 async function windowBorder() {
@@ -438,9 +459,16 @@ async function loadNote() {
       }
       if (note.value.positionX !== null && note.value.positionX !== undefined && 
           note.value.positionY !== null && note.value.positionY !== undefined) {
-        await appWindow.setPosition(new PhysicalPosition(note.value.positionX, note.value.positionY))
-        revealedPos = { x: note.value.positionX, y: note.value.positionY }
+        // 存档坐标可能已经不在任何屏幕内（换过显示器 / 收起状态下保存），直接恢复会让便签"消失"
+        const placed = await clampIntoMonitor(note.value.positionX, note.value.positionY)
+        await appWindow.setPosition(new PhysicalPosition(placed.x, placed.y))
+        revealedPos = placed
       }
+      // 打开便签是用户主动要看它：这次位置恢复触发的 moved 事件不能再把它收进边缘，
+      // 等用户真的拖动标题栏时再恢复贴边收起（startDragging 会清掉这个抑制标记）。
+      isHidden.value = false
+      snappedEdge.value = null
+      suppressAutoHide = true
       // 恢复置顶状态，与主窗口列表保持一致
       isPinned.value = note.value.isPinned
       await appWindow.setAlwaysOnTop(isPinned.value)
@@ -1087,7 +1115,7 @@ const colorEntries = NOTE_PALETTE.map((key) => [key, NOTE_COLORS[key]] as const)
   >
     <div
       class="editor-window"
-      :class="{ 'is-glass': isGlass }"
+      :class="{ 'is-glass': isGlass, 'is-linux': IS_LINUX }"
       :style="isGlass ? undefined : { background: noteBg, color: noteTextColor }"
       @mouseenter="handleWindowMouseEnter"
       @mouseleave="handleWindowMouseLeave"
@@ -1216,6 +1244,12 @@ const colorEntries = NOTE_PALETTE.map((key) => [key, NOTE_COLORS[key]] as const)
   border-radius: 10px;
   /* 始终预留 1px 边框（默认透明），保证各配色切换时盒模型一致、内容不跳动 */
   border: 1px solid transparent;
+}
+
+/* deepin 等 Linux 的 WebKitGTK 拿不到窗口 alpha，圆角外的透明像素会被涂成黑方块，
+   所以 Linux 下不做客户端圆角，整块矩形铺满窗口，交给系统合成器切角。 */
+.editor-window.is-linux {
+  border-radius: 0;
 }
 
 /* 毛玻璃主题（颜色栏第一项） */

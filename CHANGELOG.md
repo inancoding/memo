@@ -3,6 +3,32 @@
 > 本文件是 Release 发布说明的唯一来源：`.github/workflows/build.yml` 的 `release` 作业会抽取最上面一节（第一个 `## ` 到下一个 `## ` 之前）作为 GitHub Release 正文。
 > 发版时请先在这里写好「本次更新升级内容」和「最低支持系统」，再打 `v*` 标签。
 
+## v1.1.1 · 2026-11-17
+
+### ✨ 本次更新升级内容
+
+本版是问题修复，不加新功能；Windows 与 Linux 各修一处，界面与功能均无变化。
+
+- 🐛 **修复旧便签点开不显示**：编辑窗恢复上次位置时，如果存档坐标正好落在屏幕边缘 24px 内，这次恢复自身触发的「窗口移动」会被当成已经贴边，窗口立刻被收进屏幕外，只剩一条几乎看不见的把手——表现为「点旧便签没反应、新建便签正常」，且坐标存在本机库里，重启和重装都无效。现在打开便签会复位收起状态并抑制这一次自动收起（等你真正拖动标题栏后贴边收起照常生效），存档坐标先夹回当前显示器的可见区域，越出屏幕的坐标也不再被判定为贴边。
+- 🟦 **Linux 取消客户端圆角**：deepin（X11 会话）上 WebKitGTK 取不到窗口层的透明通道，圆角外本该透明的一圈像素被涂成黑色方块，打开设置时遮罩还会让它更显眼。Linux 下改为整面矩形铺满窗口，圆角交给桌面合成器处理；Windows / macOS 的圆角与阴影不变。
+- 📦 **安装包补上简介**：deb 的 `Description`、rpm 的 `Summary` 与 `%description` 之前是空的，deepin 应用安装器只显示 `(none)`。现在填上「轻量桌面便签应用」与三行功能说明。
+
+### 💻 最低支持系统
+
+| 安装包 | 适用系统 | 最低版本 | 依赖与说明 |
+|--------|----------|----------|-----------|
+| `Memo_1.1.1_x64-setup.exe` | Windows | **Windows 10 build 1809 及以上**（含 Windows 11） | 需 WebView2 Runtime（Win10 1803+ 随系统更新预装，Win11 自带）；安装器为 perMachine，需要管理员权限，界面语言简体中文 / English |
+| `Memo_1.1.1_amd64.deb` | Debian / Ubuntu 系 | **Ubuntu 22.04、Debian 12 及以上** | 依赖 `libwebkit2gtk-4.1-0`、`libgtk-3-0`、`libayatana-appindicator3-1`；已在 Ubuntu 24.04 与 26.04 核对依赖可解析（`libgtk-3-0` 由 `libgtk-3-0t64` 提供）。Deepin / UOS / Kylin 若只带 WebKitGTK 4.0 则装不上 |
+| `Memo-1.1.1-1.x86_64.rpm` | Fedora / RHEL / openSUSE 系 | **Fedora 38 及以上**（RHEL 9 系需系统自带 `webkit2gtk4.1`） | 依赖 `libwebkit2gtk-4.1.so.0`、`libgtk-3.so.0`、`libayatana-appindicator-gtk3`；已在 Fedora 45 核对由 `webkit2gtk4.1`、`gtk3`、`libayatana-appindicator-gtk3` 提供 |
+
+Linux 补充说明：
+
+- 🖥️ 桌面环境：KDE / XFCE 托盘直接可用；**GNOME（Ubuntu 默认桌面）需要安装 AppIndicator 扩展**才能看到托盘图标。
+- 🖱️ 托盘交互：Linux 下左键点击图标会弹出菜单（appindicator 的限制），从菜单里选「打开Memo」；Windows 左键直接打开主窗口。
+- 🧊 Linux 无毛玻璃主题，颜色栏从第一个实色（经典黄）开始，且不提供边缘自动隐藏，原因见 v1.0.2 说明。
+- 🔲 窗口形状：Linux 下不绘制客户端圆角，主窗口与便签为直角矩形，若桌面环境开启全局圆角则由系统切角。
+- 🗂️ 数据文件位置：Windows `%APPDATA%\com.memo.app\memo.db`，Linux `~/.local/share/com.memo.app/memo.db`。目前是**明文 SQLite**，同一登录账户下的进程可直接读取。
+
 ## v1.1.0 · 2026-11-16
 
 ### ✨ 本次更新升级内容
