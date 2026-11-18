@@ -3,6 +3,22 @@
 > 本文件是 Release 发布说明的唯一来源：`.github/workflows/build.yml` 的 `release` 作业会抽取最上面一节（第一个 `## ` 到下一个 `## ` 之前）作为 GitHub Release 正文。
 > 发版时请先在这里写好「本次更新升级内容」和「最低支持系统」，再打 `v*` 标签。
 
+## v1.1.3 · 2026-11-18
+
+### ✨ 本次更新升级内容
+
+- 🐛 **修复已删除便签的窗口重启后永远转圈**：开机自启恢复窗口时，如果便签在删除后未通过托盘正常退出（如直接关机/重启），恢复列表仍包含已删除便签的 ID，编辑窗口打开后找不到数据，加载转圈永远不消失且无法关闭。现在加载时检测到便签不存在会自动销毁窗口。
+
+### 💻 最低支持系统
+
+| 安装包 | 适用系统 | 最低版本 | 依赖与说明 |
+|--------|----------|----------|-----------|
+| `Memo_1.1.3_x64-setup.exe` | Windows | **Windows 10 build 1809 及以上**（含 Windows 11） | 需 WebView2 Runtime（Win10 1803+ 随系统更新预装，Win11 自带）；安装器为 perMachine，需要管理员权限，界面语言简体中文 / English |
+| `Memo_1.1.3_amd64.deb` | Debian / Ubuntu 系 | **Ubuntu 22.04、Debian 12 及以上** | 依赖 `libwebkit2gtk-4.1-0`、`libgtk-3-0`、`libayatana-appindicator3-1`；已在 Ubuntu 24.04 与 26.04 核对依赖可解析（`libgtk-3-0` 由 `libgtk-3-0t64` 提供）。Deepin / UOS / Kylin 若只带 WebKitGTK 4.0 则装不上 |
+| `Memo-1.1.3-1.x86_64.rpm` | Fedora / RHEL / openSUSE 系 | **Fedora 38 及以上**（RHEL 9 系需系统自带 `webkit2gtk4.1`） | 依赖 `libwebkit2gtk-4.1.so.0`、`libgtk-3.so.0`、`libayatana-appindicator-gtk3`；已在 Fedora 45 核对由 `webkit2gtk4.1`、`gtk3`、`libayatana-appindicator-gtk3` 提供 |
+
+---
+
 ## v1.1.2 · 2026-11-18
 
 ### ✨ 本次更新升级内容
