@@ -27,9 +27,6 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     'list.empty': '还没有便签',
     'card.untitled': '新便签',
     'card.deleteConfirm': '确定删除这条便签吗？删除后无法恢复。',
-    'batch.selected': '已选 {count} 条',
-    'batch.selectAll': '全选',
-    'batch.deleteConfirm': '确定删除这 {count} 条便签吗？删除后无法恢复。',
 
     'time.justNow': '刚刚',
     'time.minutesAgo': '{count} 分钟前',
@@ -94,9 +91,6 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     'list.empty': 'No notes yet',
     'card.untitled': 'New note',
     'card.deleteConfirm': 'Delete this note? This cannot be undone.',
-    'batch.selected': '{count} selected',
-    'batch.selectAll': 'Select all',
-    'batch.deleteConfirm': 'Delete these {count} notes? This cannot be undone.',
 
     'time.justNow': 'Just now',
     'time.minutesAgo': '{count} min ago',

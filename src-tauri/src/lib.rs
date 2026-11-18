@@ -62,11 +62,10 @@ struct WindowState {
     y: i32,
 }
 
-// 桌面状态：记录最后打开的便签以及编辑窗口是否可见，用于开机自启时恢复
+// 桌面状态：记录退出前未关闭的便签窗口，用于开机自启时恢复
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct DesktopState {
-    note_id: Option<String>,
-    editor_visible: bool,
+    open_notes: Option<Vec<String>>,
 }
 
 fn is_autostart_launch() -> bool {
@@ -138,36 +137,10 @@ fn load_window_state(app_handle: &tauri::AppHandle) -> Option<WindowState> {
     serde_json::from_str(&content).ok()
 }
 
-// 便签已彻底删除，若它正是编辑窗口当前展示的那条，就关掉窗口并清掉恢复记录
+// 便签已彻底删除，若它正开在自己的窗口里，关掉窗口
 pub(crate) fn forget_desktop_note(app_handle: &tauri::AppHandle, note_id: &str) {
-    let mut state = load_desktop_state(app_handle);
-    if state.note_id.as_deref() != Some(note_id) {
-        return;
-    }
-    let was_visible = state.editor_visible;
-    state.note_id = None;
-    state.editor_visible = false;
-    save_desktop_state(app_handle, &state);
-    if was_visible {
-        if let Some(editor) = app_handle.get_webview_window("editor") {
-            let _ = editor.hide();
-        }
-    }
-}
-
-// 显示编辑窗口并加载指定便签（预定义窗口，延迟发送事件等待前端监听就绪）
-fn show_editor_with_note(app_handle: &tauri::AppHandle, note_id: &str) {
-    if let Some(editor_window) = app_handle.get_webview_window("editor") {
-        let _ = editor_window.show();
-        let _ = editor_window.set_focus();
-        let window = editor_window.clone();
-        let note_id_owned = note_id.to_string();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            if let Err(e) = window.emit("open-note", &note_id_owned) {
-                println!("Failed to emit open-note: {}", e);
-            }
-        });
+    if let Some(win) = app_handle.get_webview_window(&format!("editor-{note_id}")) {
+        let _ = win.destroy();
     }
 }
 
@@ -181,19 +154,20 @@ fn default_note_color() -> &'static str {
 }
 
 // 新建便签并打开编辑窗口：全局快捷键与托盘菜单共用
+// 独立窗口模型下只负责建库 + 通知主窗口，由前端用 WebviewWindow 创建专属窗口
 pub(crate) fn create_and_open_note(app: &tauri::AppHandle) {
     let note = {
         let db = app.state::<db::Database>();
         match db.create_note(default_note_color(), "") {
             Ok(note) => note,
             Err(e) => {
-                println!("create_note failed: {}", e);
+                eprintln!("create_note failed: {}", e);
                 return;
             }
         }
     };
     let _ = app.emit("notes-changed", ());
-    show_editor_with_note(app, &note.id);
+    let _ = app.emit("request-new-note", &note.id);
 }
 
 #[tauri::command]
@@ -246,31 +220,6 @@ fn set_language(app_handle: tauri::AppHandle, lang: String) -> Result<(), String
     Ok(())
 }
 
-// 前端编辑窗口隐藏时同步桌面状态
-#[tauri::command]
-fn set_editor_visible(app_handle: tauri::AppHandle, visible: bool) -> Result<(), String> {
-    let mut state = load_desktop_state(&app_handle);
-    state.editor_visible = visible;
-    save_desktop_state(&app_handle, &state);
-    Ok(())
-}
-
-#[tauri::command]
-fn open_editor(app_handle: tauri::AppHandle, note_id: String) -> Result<(), String> {
-    if app_handle.get_webview_window("editor").is_none() {
-        return Err("Editor window not found".to_string());
-    }
-
-    // 记录最后打开的便签，供开机自启恢复
-    let mut state = load_desktop_state(&app_handle);
-    state.note_id = Some(note_id.clone());
-    state.editor_visible = true;
-    save_desktop_state(&app_handle, &state);
-
-    show_editor_with_note(&app_handle, &note_id);
-    Ok(())
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -297,11 +246,9 @@ pub fn run() {
             commands::notes::read_recovery_content,
             commands::notes::clear_recovery_content,
             save_window_state_cmd,
-            open_editor,
             get_autostart,
             set_autostart,
             set_language,
-            set_editor_visible,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
@@ -319,7 +266,7 @@ pub fn run() {
             if !welcome_marker.exists() {
                 if let Some(db) = app_handle.try_state::<db::Database>() {
                     if let Err(e) = db.seed_welcome_note(lang.code(), default_note_color()) {
-                        println!("seed welcome note failed: {}", e);
+                        eprintln!("seed welcome note failed: {}", e);
                     }
                 }
                 let _ = fs::write(&welcome_marker, "1");
@@ -328,7 +275,7 @@ pub fn run() {
             // 每次启动都把"未被用户改写"的欢迎便签刷新为当前语言的最新文案
             if let Some(db) = app_handle.try_state::<db::Database>() {
                 if let Err(e) = db.localize_welcome_note(lang.code()) {
-                    println!("localize welcome note failed: {}", e);
+                    eprintln!("localize welcome note failed: {}", e);
                 }
             }
 
@@ -409,13 +356,17 @@ pub fn run() {
                 }
             }
 
-            // 启动窗口策略：开机自启恢复上次便签窗口（不显示主窗口）；手动启动显示主窗口
+            // 启动窗口策略：开机自启恢复上次未关闭的便签窗口（不显示主窗口）；手动启动显示主窗口
             if is_autostart_launch() {
                 let state = load_desktop_state(&app_handle);
-                if state.editor_visible {
-                    if let Some(note_id) = state.note_id {
-                        show_editor_with_note(&app_handle, &note_id);
-                    }
+                let note_ids = state.open_notes.unwrap_or_default();
+                if !note_ids.is_empty() {
+                    let handle = app_handle.clone();
+                    std::thread::spawn(move || {
+                        // 等前端挂载并注册监听器
+                        std::thread::sleep(std::time::Duration::from_millis(1000));
+                        let _ = handle.emit("request-restore-notes", &note_ids);
+                    });
                 }
             } else if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -427,5 +378,13 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|_app_handle, _event| {});
+    app.run(|_app_handle, event| {
+        // 便签窗口关掉就销毁，最后一个销毁会让运行时发出 code 为 None 的自然退出，
+        // 但应用要常驻托盘，只放行 app.exit()（带 code）这条主动退出的路。
+        if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+            if code.is_none() {
+                api.prevent_exit();
+            }
+        }
+    });
 }

@@ -5,15 +5,12 @@ import type { Note } from '@/types'
 
 defineProps<{
   notes: Note[]
-  selectMode?: boolean
-  selectedIds?: string[]
 }>()
 
 const emit = defineEmits<{
   'click-note': [note: Note]
   'pin-note': [note: Note]
   'delete-note': [note: Note]
-  'toggle-select': [id: string]
 }>()
 
 const { t } = useI18n()
@@ -25,12 +22,9 @@ const { t } = useI18n()
       v-for="note in notes"
       :key="note.id"
       :note="note"
-      :select-mode="selectMode"
-      :selected="selectedIds?.includes(note.id)"
       @click="emit('click-note', note)"
       @pin="emit('pin-note', note)"
       @delete="emit('delete-note', note)"
-      @toggle-select="emit('toggle-select', $event)"
     />
   </div>
 

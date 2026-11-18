@@ -10,15 +10,12 @@ import { useNote } from '@/composables/useNote'
 
 const props = defineProps<{
   note: Note
-  selectMode?: boolean
-  selected?: boolean
 }>()
 
 const emit = defineEmits<{
   click: [note: Note]
   pin: [note: Note]
   delete: [note: Note]
-  'toggle-select': [id: string]
 }>()
 
 const { t } = useI18n()
@@ -54,21 +51,12 @@ const timeAgo = computed(() => formatTime(props.note.updatedAt))
     :style="colorStyle"
     @click="emit('click', note)"
   >
-    <!-- 多选勾选框：非多选态下 hover 才出现，勾选任意一个即进入多选 -->
-    <div
-      class="absolute top-2 left-2 z-10 flex items-center justify-center w-5 h-5"
-      :class="selectMode || selected ? '' : 'opacity-0 group-hover:opacity-100'"
-      @click.stop="emit('toggle-select', note.id)"
-    >
-      <n-checkbox :checked="selected" />
-    </div>
-
-    <div class="flex items-start justify-between gap-2 pl-6">
+    <div class="flex items-start justify-between gap-2">
       <div class="text-sm font-semibold leading-snug line-clamp-2 flex-1">
         {{ displayTitle }}
       </div>
       <n-button
-        v-if="note.isPinned && !selectMode"
+        v-if="note.isPinned"
         text
         size="tiny"
         class="flex-shrink-0 opacity-60"
@@ -83,8 +71,7 @@ const timeAgo = computed(() => formatTime(props.note.updatedAt))
 
     <div class="flex items-center justify-between pt-2 border-t border-black/6 dark:border-white/10 text-xs opacity-40">
       <span>{{ timeAgo }}</span>
-      <!-- 多选模式下禁用单卡片的置顶 / 删除 -->
-      <div v-if="!selectMode" class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <n-button
           text
           size="tiny"

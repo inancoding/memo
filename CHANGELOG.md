@@ -3,6 +3,35 @@
 > 本文件是 Release 发布说明的唯一来源：`.github/workflows/build.yml` 的 `release` 作业会抽取最上面一节（第一个 `## ` 到下一个 `## ` 之前）作为 GitHub Release 正文。
 > 发版时请先在这里写好「本次更新升级内容」和「最低支持系统」，再打 `v*` 标签。
 
+## v1.1.2 · 2026-11-18
+
+### ✨ 本次更新升级内容
+
+本版是架构升级与质量收尾，不加新功能。
+
+- 🪟 **独立窗口模型**：每条便签现在打开专属的编辑窗口（`editor-<id>`），可同时编辑多条便签。前端通过 `WebviewWindow` 创建窗口，避开 Rust 侧 `build()` 挂死问题。开机自启时恢复上次所有未关闭的便签窗口。
+- 🗑️ **移除批量删除**：多选模式与卡片勾选框已移除，界面更简洁。单条删除仍保留二次确认。
+- 🧹 **清理调试日志**：前端 19 处 `console.log` 全部移除，后端 3 处 `println!` 改为 `eprintln!`（仅记录错误）。
+- 📝 **PRD v1.5 同步**：文档更新反映独立窗口模型、批量删除移除、质量收尾完成情况。
+
+### 💻 最低支持系统
+
+| 安装包 | 适用系统 | 最低版本 | 依赖与说明 |
+|--------|----------|----------|-----------|
+| `Memo_1.1.2_x64-setup.exe` | Windows | **Windows 10 build 1809 及以上**（含 Windows 11） | 需 WebView2 Runtime（Win10 1803+ 随系统更新预装，Win11 自带）；安装器为 perMachine，需要管理员权限，界面语言简体中文 / English |
+| `Memo_1.1.2_amd64.deb` | Debian / Ubuntu 系 | **Ubuntu 22.04、Debian 12 及以上** | 依赖 `libwebkit2gtk-4.1-0`、`libgtk-3-0`、`libayatana-appindicator3-1`；已在 Ubuntu 24.04 与 26.04 核对依赖可解析（`libgtk-3-0` 由 `libgtk-3-0t64` 提供）。Deepin / UOS / Kylin 若只带 WebKitGTK 4.0 则装不上 |
+| `Memo-1.1.2-1.x86_64.rpm` | Fedora / RHEL / openSUSE 系 | **Fedora 38 及以上**（RHEL 9 系需系统自带 `webkit2gtk4.1`） | 依赖 `libwebkit2gtk-4.1.so.0`、`libgtk-3.so.0`、`libayatana-appindicator-gtk3`；已在 Fedora 45 核对由 `webkit2gtk4.1`、`gtk3`、`libayatana-appindicator-gtk3` 提供 |
+
+Linux 补充说明：
+
+- 🖥️ 桌面环境：KDE / XFCE 托盘直接可用；**GNOME（Ubuntu 默认桌面）需要安装 AppIndicator 扩展**才能看到托盘图标。
+- 🖱️ 托盘交互：Linux 下左键点击图标会弹出菜单（appindicator 的限制），从菜单里选「打开Memo」；Windows 左键直接打开主窗口。
+- 🧊 Linux 无毛玻璃主题，颜色栏从第一个实色（经典黄）开始，且不提供边缘自动隐藏，原因见 v1.0.2 说明。
+- 🔲 窗口形状：Linux 下不绘制客户端圆角，主窗口与便签为直角矩形，若桌面环境开启全局圆角则由系统切角。
+- 🗂️ 数据文件位置：Windows `%APPDATA%\com.memo.app\memo.db`，Linux `~/.local/share/com.memo.app/memo.db`。目前是**明文 SQLite**，同一登录账户下的进程可直接读取。
+
+---
+
 ## v1.1.1 · 2026-11-17
 
 ### ✨ 本次更新升级内容

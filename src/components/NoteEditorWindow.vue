@@ -5,11 +5,12 @@ import type { GlobalThemeOverrides } from 'naive-ui'
 import { getCurrentWindow, currentMonitor, availableMonitors, PhysicalSize, PhysicalPosition } from '@tauri-apps/api/window'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
-import { emit, listen } from '@tauri-apps/api/event'
+import { emit } from '@tauri-apps/api/event'
 import { useTheme } from '@/composables/useTheme'
 import { useI18n } from '@/composables/useI18n'
 import { IS_LINUX } from '@/composables/usePlatform'
 import { NOTE_PALETTE, DEFAULT_NOTE_COLOR, resolveNoteColor } from '@/composables/noteColors'
+import { htmlToText } from '@/composables/noteText'
 import WindowResizeHandles from '@/components/WindowResizeHandles.vue'
 import type { Note, NoteColor } from '@/types'
 import { NOTE_COLORS } from '@/types'
@@ -17,6 +18,9 @@ import { NOTE_COLORS } from '@/types'
 const { isDark } = useTheme()
 const { t } = useI18n()
 const appWindow = getCurrentWindow()
+
+// 独立便签窗口：便签 id 写在启动 URL 里，自己加载、自己显示、关掉即销毁
+const urlNoteId = new URLSearchParams(window.location.search).get('note')
 
 const note = ref<Note | null>(null)
 const isFocused = ref(false)
@@ -29,7 +33,6 @@ let unlistenClose: (() => void) | null = null
 let unlistenDragDrop: (() => void) | null = null
 let unlistenResized: (() => void) | null = null
 let unlistenMoved: (() => void) | null = null
-let unlistenOpenNote: (() => void) | null = null
 
 // 防抖定时器
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
@@ -296,46 +299,35 @@ function handleWindowMouseLeave() {
 }
 
 onMounted(async () => {
-  console.log('NoteEditorWindow mounted')
-
   // 边缘隐藏开关：读取设置并监听主窗口的变更（同源跨窗口 storage 事件）
   edgeHideEnabled.value = readEdgeHideSetting()
   window.addEventListener('storage', handleStorageChange)
   window.addEventListener('keydown', handleShortcut)
 
-  // 监听 open-note 事件
-  unlistenOpenNote = await listen<string>('open-note', async (event) => {
-    console.log('Received open-note event:', event.payload)
-    // 载入另一条会重置编辑器内容，先把上一条尚未落库的部分处理掉
-    if (note.value && event.payload !== note.value.id) await drainPendingSave()
-    noteId.value = event.payload
-    if (noteId.value) {
-      console.log('Loading note:', noteId.value)
-      await loadNote()
-      console.log('Note loaded:', note.value?.id)
-    }
-  })
-  console.log('open-note listener registered')
+  // 独立便签窗口：从 URL 取便签 id，加载后自己显示
+  noteId.value = urlNoteId
+  await loadNote()
+  // 建窗时 tao 调的那次 DeleteTab 会被"显示窗口"重新挂回任务栏，显示前补一次
+  await appWindow.setSkipTaskbar(true).catch(console.error)
+  await appWindow.show()
+  await appWindow.setFocus()
 
-  // 拦截窗口关闭事件，保存位置大小后隐藏
+  // 拦截窗口关闭事件：落库后销毁
   unlistenClose = await appWindow.onCloseRequested(async (event) => {
     event.preventDefault()
     await saveWindowGeometry()
     await drainPendingSave()
-    await invoke('set_editor_visible', { visible: false }).catch(console.error)
-    await appWindow.hide()
+    await appWindow.destroy()
   })
 
   // 监听 Tauri 拖放事件（Webview 级别，v2 推荐方式）
   try {
     unlistenDragDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
-      console.log('Drag drop event:', event)
     if (event.payload.type === 'drop') {
       const paths = event.payload.paths
       for (const path of paths) {
         if (path.match(/\.(png|jpg|jpeg|gif|webp|bmp)$/i)) {
           const assetUrl = convertFileSrc(path)
-          console.log('Inserting image:', assetUrl)
           
           // 确保编辑器有焦点
           if (editorRef.value) {
@@ -367,7 +359,6 @@ onMounted(async () => {
       }
     }
     })
-    console.log('Drag drop listener registered')
   } catch (e) {
     console.error('Failed to register drag drop listener:', e)
   }
@@ -397,7 +388,6 @@ onUnmounted(() => {
   if (unlistenDragDrop) unlistenDragDrop()
   if (unlistenResized) unlistenResized()
   if (unlistenMoved) unlistenMoved()
-  if (unlistenOpenNote) unlistenOpenNote()
   if (resizeTimer) clearTimeout(resizeTimer)
   if (moveTimer) clearTimeout(moveTimer)
   if (inputTimer) clearTimeout(inputTimer)
@@ -433,7 +423,6 @@ async function saveWindowGeometry() {
         positionY: y,
       }
     })
-    console.log('Saved window geometry:', { width: size.width, height: size.height, x, y })
   } catch (e) {
     console.error('Failed to save window geometry:', e)
   }
@@ -472,16 +461,20 @@ async function loadNote() {
       // 恢复置顶状态，与主窗口列表保持一致
       isPinned.value = note.value.isPinned
       await appWindow.setAlwaysOnTop(isPinned.value)
-      console.log('Window geometry restored:', { 
-        width: note.value.width, 
-        height: note.value.height, 
-        x: note.value.positionX, 
-        y: note.value.positionY 
-      })
+      await updateWindowTitle()
     }
   } catch (e) {
     console.error('Failed to load note:', e)
   }
+}
+
+// 窗口标题取便签内容首行（去 HTML），最长 50 字；空内容回退到应用名
+async function updateWindowTitle() {
+  if (!note.value) return
+  const text = htmlToText(note.value.content)
+  const firstLine = text.split('\n').find((l) => l.trim()) || 'Memo Editor'
+  const title = firstLine.slice(0, 50)
+  await appWindow.setTitle(title).catch(console.error)
 }
 
 const noteColor = computed<NoteColor>(() => resolveNoteColor(note.value?.color ?? DEFAULT_NOTE_COLOR))
@@ -904,8 +897,6 @@ function handleKeydown(e: KeyboardEvent) {
           const textContent = textEl?.textContent?.replace(/\u200B/g, '').trim() || ''
           const isEmpty = textContent === ''
           
-          console.log('Enter in task-item, isEmpty:', isEmpty, 'textContent:', textContent)
-          
           if (isEmpty) {
             // 空的复选框行，删除它并创建普通行
             const newDiv = document.createElement('div')
@@ -958,14 +949,11 @@ function insertImage() {
 }
 
 function handleDrop(e: DragEvent) {
-  console.log('handleDrop called', e)
   e.preventDefault()
   e.stopPropagation()
   const files = e.dataTransfer?.files
-  console.log('Files:', files)
   if (!files || files.length === 0) return
   for (const file of Array.from(files)) {
-    console.log('Processing file:', file.name, file.type)
     if (!file.type.startsWith('image/')) continue
     const reader = new FileReader()
     reader.onload = () => {
@@ -1072,8 +1060,7 @@ function changeColor(color: NoteColor) {
 
 async function handleClose() {
   await drainPendingSave()
-  // 隐藏窗口而不是关闭，以便下次可以重新打开
-  await appWindow.hide()
+  await appWindow.destroy()
 }
 
 async function togglePin() {

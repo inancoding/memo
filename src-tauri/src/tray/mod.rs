@@ -91,11 +91,16 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         "quit" => {
-            // 退出前记录编辑窗口可见状态，供开机自启恢复
+            // 退出前快照当前打开的便签窗口，供开机自启恢复
+            let open_notes: Vec<String> = app
+                .webview_windows()
+                .iter()
+                .filter_map(|(label, _)| {
+                    label.strip_prefix("editor-").map(|id| id.to_string())
+                })
+                .collect();
             let mut state = load_desktop_state(app);
-            if let Some(editor) = app.get_webview_window("editor") {
-                state.editor_visible = editor.is_visible().unwrap_or(false);
-            }
+            state.open_notes = Some(open_notes);
             save_desktop_state(app, &state);
             app.exit(0);
         }
