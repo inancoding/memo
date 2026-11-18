@@ -435,7 +435,12 @@ async function loadNote() {
   try {
     const notes = await invoke<Note[]>('get_notes')
     note.value = notes.find(n => n.id === noteId.value) || null
-    if (note.value && editorRef.value) {
+    // 便签已被删除（开机自启恢复时可能遇到），销毁窗口避免永远转圈
+    if (!note.value) {
+      await appWindow.destroy()
+      return
+    }
+    if (editorRef.value) {
       await nextTick()
       editorRef.value.innerHTML = note.value.content
       applyAutoLinks()
