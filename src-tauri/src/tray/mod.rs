@@ -9,7 +9,7 @@ use tauri_plugin_autostart::ManagerExt;
 #[cfg(not(target_os = "linux"))]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 
-use crate::{create_and_open_note, load_desktop_state, save_desktop_state, AppLang, Lang};
+use crate::{create_and_open_note, snapshot_open_notes, AppLang, Lang};
 
 // 托盘图标只建一个，重建菜单时按这个 id 找回它
 pub const TRAY_ID: &str = "main";
@@ -91,17 +91,8 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         "quit" => {
-            // 退出前快照当前打开的便签窗口，供开机自启恢复
-            let open_notes: Vec<String> = app
-                .webview_windows()
-                .iter()
-                .filter_map(|(label, _)| {
-                    label.strip_prefix("editor-").map(|id| id.to_string())
-                })
-                .collect();
-            let mut state = load_desktop_state(app);
-            state.open_notes = Some(open_notes);
-            save_desktop_state(app, &state);
+            // 退出前再快照一次（正常情况下开关窗口时已实时落盘，这里是兜底）
+            snapshot_open_notes(app);
             app.exit(0);
         }
         _ => {}

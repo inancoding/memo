@@ -1,5 +1,6 @@
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { getAllWindows } from '@tauri-apps/api/window'
+import { invoke } from '@tauri-apps/api/core'
 
 // label 用 editor-<id>，命中 capabilities/default.json 里已有的 "editor-*" 通配，
 // 新窗口才拿得到 invoke 命令所需的权限。
@@ -48,4 +49,7 @@ export async function openNoteWindow(noteId: string): Promise<void> {
       reject(e)
     })
   })
+
+  // 新窗口已建成，实时记录当前开着的便签，供开机自启恢复（销毁时由 Rust 全局钩子更新）
+  await invoke('record_open_notes_cmd')
 }

@@ -89,28 +89,42 @@ fn get_window_state_path(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
         .join("window_state.json")
 }
 
-fn get_desktop_state_path(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
-    app_handle
-        .path()
+fn get_desktop_state_path(app: &impl Manager<tauri::Wry>) -> std::path::PathBuf {
+    app.path()
         .app_data_dir()
         .expect("failed to get app data dir")
         .join("desktop_state.json")
 }
 
-pub(crate) fn load_desktop_state(app_handle: &tauri::AppHandle) -> DesktopState {
-    let path = get_desktop_state_path(app_handle);
+fn load_desktop_state(app: &impl Manager<tauri::Wry>) -> DesktopState {
+    let path = get_desktop_state_path(app);
     fs::read_to_string(path)
         .ok()
         .and_then(|c| serde_json::from_str(&c).ok())
         .unwrap_or_default()
 }
 
-pub(crate) fn save_desktop_state(app_handle: &tauri::AppHandle, state: &DesktopState) {
-    let path = get_desktop_state_path(app_handle);
+fn save_desktop_state(app: &impl Manager<tauri::Wry>, state: &DesktopState) {
+    let path = get_desktop_state_path(app);
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
     let _ = fs::write(path, serde_json::to_string_pretty(state).unwrap_or_default());
+}
+
+// 快照当前打开的便签编辑窗（label 形如 editor-<id>）并落盘。
+// 每次窗口创建 / 销毁都调用它，使状态文件始终等于「此刻真正开着的便签」，
+// 这样关机 / 重启 / 断电 / 强杀都不需要先走托盘退出也能在下次开机恢复。
+// AppHandle 与 Window 都实现 Manager，故删除便签（从 Window 事件）与新建（从命令）共用此函数。
+pub(crate) fn snapshot_open_notes(app: &impl Manager<tauri::Wry>) {
+    let open_notes: Vec<String> = app
+        .webview_windows()
+        .iter()
+        .filter_map(|(label, _)| label.strip_prefix("editor-").map(|id| id.to_string()))
+        .collect();
+    let mut state = load_desktop_state(app);
+    state.open_notes = Some(open_notes);
+    save_desktop_state(app, &state);
 }
 
 fn save_window_state(app_handle: &tauri::AppHandle, window: &tauri::WebviewWindow) {
@@ -176,6 +190,12 @@ fn save_window_state_cmd(app_handle: tauri::AppHandle) -> Result<(), String> {
         save_window_state(&app_handle, &window);
     }
     Ok(())
+}
+
+// 前端新建便签窗口（tauri://created 之后）调用，把「当前开着的便签」实时写进状态文件。
+#[tauri::command]
+fn record_open_notes_cmd(app_handle: tauri::AppHandle) {
+    snapshot_open_notes(&app_handle);
 }
 
 #[tauri::command]
@@ -246,10 +266,20 @@ pub fn run() {
             commands::notes::read_recovery_content,
             commands::notes::clear_recovery_content,
             save_window_state_cmd,
+            record_open_notes_cmd,
             get_autostart,
             set_autostart,
             set_language,
         ])
+        // 便签窗口一旦被销毁（用户关闭、删除便签、程序化 destroy），立即刷新状态文件。
+        // 全局钩子对所有窗口生效，含 setup 之后由前端 WebviewWindow 新建的窗口。
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                if window.label().starts_with("editor-") {
+                    snapshot_open_notes(window);
+                }
+            }
+        })
         .setup(|app| {
             let app_handle = app.handle().clone();
 
@@ -356,21 +386,23 @@ pub fn run() {
                 }
             }
 
-            // 启动窗口策略：开机自启恢复上次未关闭的便签窗口（不显示主窗口）；手动启动显示主窗口
-            if is_autostart_launch() {
-                let state = load_desktop_state(&app_handle);
-                let note_ids = state.open_notes.unwrap_or_default();
-                if !note_ids.is_empty() {
-                    let handle = app_handle.clone();
-                    std::thread::spawn(move || {
-                        // 等前端挂载并注册监听器
-                        std::thread::sleep(std::time::Duration::from_millis(1000));
-                        let _ = handle.emit("request-restore-notes", &note_ids);
-                    });
+            // 启动窗口策略：无论哪种启动方式都恢复上次挂在桌面的便签窗口；
+            // 额外地，手动启动显示主窗口，开机自启只还原便签、不弹主窗口。
+            let state = load_desktop_state(&app_handle);
+            let note_ids = state.open_notes.unwrap_or_default();
+            if !note_ids.is_empty() {
+                let handle = app_handle.clone();
+                std::thread::spawn(move || {
+                    // 等前端挂载并注册监听器
+                    std::thread::sleep(std::time::Duration::from_millis(1000));
+                    let _ = handle.emit("request-restore-notes", &note_ids);
+                });
+            }
+            if !is_autostart_launch() {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
-            } else if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
             }
 
             Ok(())
