@@ -88,6 +88,17 @@ async function readGeometry() {
   return { monitor, size, pos, scale: monitor.scaleFactor || 1 }
 }
 
+// 屏幕外的那截区域是否被另一台显示器覆盖。跨两台屏接缝的窗口不能吸附，
+// 否则会被拉到接缝处滑出视野。
+async function overflowCovered(x: number, y: number, w: number, h: number) {
+  if (w <= 0 || h <= 0) return false
+  const monitors = await availableMonitors()
+  return monitors.some(m =>
+    x < m.position.x + m.size.width && x + w > m.position.x &&
+    y < m.position.y + m.size.height && y + h > m.position.y
+  )
+}
+
 async function detectSnapEdge(): Promise<SnapEdge | null> {
   const g = await readGeometry()
   if (!g) return null
@@ -99,13 +110,25 @@ async function detectSnapEdge(): Promise<SnapEdge | null> {
   const dTop = pos.y - mTop
   const dLeft = pos.x - mLeft
   const dRight = mRight - (pos.x + size.width)
+  // 带符号距离：正数表示窗口还在屏内，负数表示已经越出屏幕。
+  // 屏内距离 ≤ trigger 或越出屏幕（不限多少，只要露出去）都算贴边；
+  // hideToEdge 按显示器绝对坐标拉回标准收起位置，越界多远都不会越推越远。
+  const candidates: Array<{ edge: SnapEdge; d: number; overflow: [number, number, number, number] }> = [
+    { edge: 'top', d: dTop, overflow: [pos.x, pos.y, size.width, -dTop] },
+    { edge: 'left', d: dLeft, overflow: [pos.x, pos.y, -dLeft, size.height] },
+    { edge: 'right', d: dRight, overflow: [mRight, pos.y, -dRight, size.height] },
+  ]
   let best: SnapEdge | null = null
   let bestDist = Infinity
-  // 距离为负说明窗口已经越出显示器（多屏坐标漂移、存档位置超出虚拟桌面），那不是"贴边"，
-  // 当成贴边会立刻把窗口推出屏幕，便签看起来就像打不开。
-  if (dTop >= 0 && dTop <= trigger && dTop < bestDist) { best = 'top'; bestDist = dTop }
-  if (dLeft >= 0 && dLeft <= trigger && dLeft < bestDist) { best = 'left'; bestDist = dLeft }
-  if (dRight >= 0 && dRight <= trigger && dRight < bestDist) { best = 'right'; bestDist = dRight }
+  for (const { edge, d, overflow } of candidates) {
+    // 屏内超过 trigger 的不算；屏外且越界区域被另一台显示器覆盖的不算
+    if (d > trigger) continue
+    if (d < 0 && (await overflowCovered(...overflow))) continue
+    const dist = Math.abs(d)
+    if (dist >= bestDist) continue
+    best = edge
+    bestDist = dist
+  }
   return best
 }
 
